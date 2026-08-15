@@ -1,4 +1,4 @@
-# solar-power-monitor
+# power-monitor
 
 Collect solar generation, whole-home usage, and utility meter data into SQLite.
 
