@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+*.sqlite3
+*.csr
+*.pem
+*.key
+pge-login.json
+pge-tls/
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+*.pyc
+.DS_Store
