@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
@@ -45,13 +46,13 @@ def main() -> int:
     elif args.cmd == "status":
         print(json.dumps(request(args.url, "/api/status"), indent=2))
     elif args.cmd == "devices":
-        path = "/api/devices" + (("?provider=" + args.provider) if args.provider else "")
+        query = urllib.parse.urlencode({"provider": args.provider}) if args.provider else ""
+        path = "/api/devices" + (("?" + query) if query else "")
         print(json.dumps(request(args.url, path), indent=2))
     elif args.cmd == "usage":
-        query = []
-        if args.provider: query.append("provider=" + args.provider)
-        query.append("limit=" + str(args.limit))
-        print(json.dumps(request(args.url, "/api/usage?" + "&".join(query)), indent=2))
+        query = {"limit": args.limit}
+        if args.provider: query["provider"] = args.provider
+        print(json.dumps(request(args.url, "/api/usage?" + urllib.parse.urlencode(query)), indent=2))
     elif args.cmd == "collect":
         print(json.dumps(request(args.url, "/api/collect", method="POST"), indent=2))
     elif args.cmd == "report":

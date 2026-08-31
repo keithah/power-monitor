@@ -27,6 +27,15 @@ _EMPORIA_CLIENT = None
 _EMPORIA_API = 'https://api.emporiaenergy.com'
 
 
+def _public_envoy_system(system):
+    """Return only non-credential Envoy metadata for API responses."""
+    return {
+        key: system[key]
+        for key in ('name', 'host', 'serial', 'cloud', 'site_id')
+        if key in system and system[key] is not None
+    }
+
+
 def _jwt_exp(token: str) -> float | None:
     """Return the exp claim of a JWT without verifying it."""
     try:
@@ -326,7 +335,7 @@ def status():
 def enphase_systems():
     try:
         systems = envoy_systems()
-        return jsonify(status='ok' if systems else 'not_configured', systems=[{k:v for k,v in s.items() if k not in ('session','token')} for s in systems]), (200 if systems else 503)
+        return jsonify(status='ok' if systems else 'not_configured', systems=[_public_envoy_system(s) for s in systems]), (200 if systems else 503)
     except Exception as e: return jsonify(status='error', error=str(e)[:300]), 502
 
 
@@ -340,7 +349,7 @@ def devices():
     try:
         systems = envoy_systems()
         if not requested or requested == 'enphase':
-            result['providers']['enphase'] = [{k: v for k, v in s.items() if k not in ('session', 'token')} for s in systems]
+            result['providers']['enphase'] = [_public_envoy_system(s) for s in systems]
     except Exception as exc:
         result['providers']['enphase'] = {'status': 'error', 'error': str(exc)[:300]}
     if (not requested or requested == 'emporia') and os.getenv('EMPORIA_EMAIL') and os.getenv('EMPORIA_PASSWORD'):
