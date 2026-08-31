@@ -16,7 +16,22 @@ from providers import (
 )
 from provider_adapters import EmporiaProvider
 
-DATA_DIR = os.getenv('DATA_DIR', '/data')
+def _select_data_dir():
+    """Use the container data path, with a writable local-dev fallback."""
+    configured = os.getenv('DATA_DIR')
+    if configured:
+        os.makedirs(configured, exist_ok=True)
+        return configured
+    try:
+        os.makedirs('/data', exist_ok=True)
+        return '/data'
+    except OSError:
+        local = os.path.abspath('data')
+        os.makedirs(local, exist_ok=True)
+        return local
+
+
+DATA_DIR = _select_data_dir()
 DB = os.path.join(DATA_DIR, 'solar.sqlite3')
 PORT = int(os.getenv('PORT', '8080'))
 app = Flask(__name__)
