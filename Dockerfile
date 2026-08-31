@@ -2,7 +2,7 @@ FROM python:3.13-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py providers.py .
+COPY app.py mcp_server.py providers.py provider_adapters.py power_core.py ./
 RUN useradd --create-home --uid 10001 monitor && mkdir -p /data && chown -R monitor:monitor /app /data
 USER monitor
 ENV DATA_DIR=/data PORT=8080

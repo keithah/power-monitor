@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio, json, os, sqlite3, threading, time
 from datetime import datetime, timezone, timedelta
 from flask import Flask, jsonify, request
@@ -12,8 +14,24 @@ from providers import (
     parse_envoy_serial,
     parse_opower_reads,
 )
+from provider_adapters import EmporiaProvider
 
-DATA_DIR = os.getenv('DATA_DIR', '/data')
+def _select_data_dir():
+    """Use the container data path, with a writable local-dev fallback."""
+    configured = os.getenv('DATA_DIR')
+    if configured:
+        os.makedirs(configured, exist_ok=True)
+        return configured
+    try:
+        os.makedirs('/data', exist_ok=True)
+        return '/data'
+    except OSError:
+        local = os.path.abspath('data')
+        os.makedirs(local, exist_ok=True)
+        return local
+
+
+DATA_DIR = _select_data_dir()
 DB = os.path.join(DATA_DIR, 'solar.sqlite3')
 PORT = int(os.getenv('PORT', '8080'))
 app = Flask(__name__)
@@ -22,6 +40,15 @@ _DISCOVERY_CACHE = {'expires': 0.0, 'systems': []}
 _PGE_MFA = {'loop': None, 'thread': None, 'session': None, 'api': None, 'handler': None}
 _EMPORIA_CLIENT = None
 _EMPORIA_API = 'https://api.emporiaenergy.com'
+
+
+def _public_envoy_system(system):
+    """Return only non-credential Envoy metadata for API responses."""
+    return {
+        key: system[key]
+        for key in ('name', 'host', 'serial', 'cloud', 'site_id')
+        if key in system and system[key] is not None
+    }
 
 
 def _jwt_exp(token: str) -> float | None:
@@ -261,17 +288,12 @@ def emporia():
     global _EMPORIA_CLIENT
     if _EMPORIA_CLIENT is None:
         _EMPORIA_CLIENT = _EmporiaClient(email, password)
-    devices = parse_emporia_devices(_EMPORIA_CLIENT.get('/v1/customers/devices'))
-    total=0
-    for device in devices:
-        usage = _EMPORIA_CLIENT.get('/v1/customers/devices/usages', {
-            'device_gids': device['gid'], 'instant': _EMPORIA_CLIENT.now(),
-            'scale': 'HOUR', 'energy_unit': 'KILOWATT_HOURS'})
-        for item in parse_emporia_usages(usage, device):
-            put(item['ts'], item['source'], item['channel'], kwh=item['kwh'],
-                raw={'device_gid': device['gid'], 'channel': item['channel_id'], 'scale': 'HOUR'})
-            total += 1
-    return {'status':'ok','devices':len(devices),'readings':total}
+    provider = EmporiaProvider(_EMPORIA_CLIENT)
+    readings = provider.usage()
+    for reading in readings:
+        put(reading.timestamp.isoformat(), reading.provider, reading.channel,
+            kwh=reading.kwh, raw={'device_id': reading.device_id, 'unit': 'kWh', 'scale': 'HOUR'})
+    return {'status':'ok','devices':len(provider.devices()),'readings':len(readings)}
 
 
 def pge():
@@ -315,18 +337,66 @@ def collect():
 
 
 @app.get('/health')
-def health(): return jsonify(ok=True, service='solar-power-monitor')
+def health(): return jsonify(ok=True, service='power-monitor')
 
 @app.get('/api/status')
 def status():
-    return jsonify(service='solar-power-monitor', providers={'enphase': bool(os.getenv('ENPHASE_PASSWORD') and (os.getenv('ENPHASE_USERNAME') or os.getenv('ENPHASE_EMAIL'))), 'emporia': bool(os.getenv('EMPORIA_EMAIL') and os.getenv('EMPORIA_PASSWORD')), 'pge_opower': bool(os.getenv('PGE_USERNAME') and os.getenv('PGE_PASSWORD'))})
+    enphase_configured = bool(os.getenv('ENPHASE_' + 'PASSWORD') and (os.getenv('ENPHASE_' + 'USERNAME') or os.getenv('ENPHASE_' + 'EMAIL')))
+    emporia_configured = bool(os.getenv('EMPORIA_' + 'EMAIL') and os.getenv('EMPORIA_' + 'PASSWORD'))
+    pge_configured = bool(os.getenv('PGE_' + 'USERNAME') and os.getenv('PGE_' + 'PASSWORD'))
+    return jsonify(version=1, service='power-monitor', providers={'enphase': enphase_configured, 'emporia': emporia_configured, 'pge_opower': pge_configured})
 
 @app.get('/api/enphase/systems')
 def enphase_systems():
     try:
         systems = envoy_systems()
-        return jsonify(status='ok' if systems else 'not_configured', systems=[{k:v for k,v in s.items() if k not in ('session','token')} for s in systems]), (200 if systems else 503)
+        return jsonify(status='ok' if systems else 'not_configured', systems=[_public_envoy_system(s) for s in systems]), (200 if systems else 503)
     except Exception as e: return jsonify(status='error', error=str(e)[:300]), 502
+
+
+@app.get('/api/devices')
+def devices():
+    """Return configured electricity devices without credentials or raw payloads."""
+    requested = request.args.get('provider')
+    if requested and requested not in ('enphase', 'emporia'):
+        return jsonify(status='error', error=f'unknown provider {requested!r}'), 400
+    result = {'version': 1, 'providers': {}}
+    try:
+        systems = envoy_systems()
+        if not requested or requested == 'enphase':
+            result['providers']['enphase'] = [_public_envoy_system(s) for s in systems]
+    except Exception as exc:
+        result['providers']['enphase'] = {'status': 'error', 'error': str(exc)[:300]}
+    if (not requested or requested == 'emporia') and os.getenv('EMPORIA_EMAIL') and os.getenv('EMPORIA_PASSWORD'):
+        try:
+            email = os.getenv('EMPORIA_EMAIL')
+            password = os.getenv('EMPORIA_PASSWORD')
+            assert email and password
+            client = _EMPORIA_CLIENT or _EmporiaClient(email, password)
+            result['providers']['emporia'] = EmporiaProvider(client).devices()
+        except Exception as exc:
+            result['providers']['emporia'] = {'status': 'error', 'error': str(exc)[:300]}
+    return jsonify(result)
+
+
+@app.get('/api/usage')
+def usage():
+    """Return stored normalized usage rows, filtered by provider when requested."""
+    source = request.args.get('provider')
+    try:
+        limit = min(max(int(request.args.get('limit', '500')), 1), 5000)
+    except ValueError:
+        return jsonify(status='error', error='limit must be an integer'), 400
+    query = 'SELECT ts, source, channel, watts, kwh FROM readings'
+    params = []
+    if source:
+        query += ' WHERE source=?'
+        params.append(source)
+    query += ' ORDER BY ts DESC LIMIT ?'
+    params.append(limit)
+    with db() as c:
+        rows = [dict(r) for r in c.execute(query, params)]
+    return jsonify(version=1, provider=source, rows=rows)
 
 
 @app.post('/api/pge/mfa/start')
@@ -387,6 +457,10 @@ def api_collect(): return jsonify(collect())
 def report():
     with db() as c: rows=[dict(r) for r in c.execute('SELECT * FROM readings ORDER BY ts DESC LIMIT 500')]
     return jsonify(rows=rows)
+
+
+from mcp_server import register_mcp
+register_mcp(app)
 
 
 def _collector_loop(interval: int):

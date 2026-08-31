@@ -2,7 +2,7 @@
 
 Collect solar generation, whole-home usage, and utility meter data into SQLite.
 
-This is a **small HTTP collector**, not an MCP server and not a Home Assistant add-on.
+This is a **small HTTP collector with a read-only CLI and native Streamable HTTP MCP endpoint**, not a Home Assistant add-on.
 
 ```text
 Enphase  → generation
@@ -12,6 +12,7 @@ Opower   → utility import/export
         SQLite
            ↓
    GET /api/report
+   POST /mcp  ← native MCP Streamable HTTP
 ```
 
 ## Why this shape
@@ -19,7 +20,7 @@ Opower   → utility import/export
 | Surface | Use it for |
 |---|---|
 | **HTTP service (this repo)** | Always-on collection, health checks, MFA callbacks |
-| **CLI (`cli.py`)** | One-shot `collect` / `status` / `report` against a running service |
+| **CLI (`cli.py`)** | One-shot `collect` / `status` / `devices` / `usage` / `report` against a running service |
 | **MCP** | Later, as a thin read-only wrapper over `/api/report` — not the core |
 
 MCP is a bad primary interface here: collection is long-running, PG&E MFA is interactive, and agents should query stored readings rather than log into utilities. Keep credentials on the collector host.
@@ -40,12 +41,28 @@ MCP is a bad primary interface here: collection is long-running, PG&E MFA is int
 
 The container also polls on `COLLECT_INTERVAL_SECONDS` (default 900). Set `0` to collect only on demand.
 
+## MCP over Streamable HTTP
+
+The service exposes a stateless native MCP endpoint at `/mcp`; it does not spawn a
+stdio subprocess or bridge to one. Configure an MCP client with:
+
+```text
+http://127.0.0.1:8080/mcp
+```
+
+The endpoint exposes read-only `status`, `devices`, `usage`, and `report` tools.
+For a network-accessible deployment, set `MCP_AUTH_TOKEN` and send it as a
+Bearer token. Keep the service behind TLS and an authenticated reverse proxy when
+it is not loopback-only.
+
 ## HTTP API
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | liveness |
 | GET | `/api/status` | which providers have credentials |
+| GET | `/api/devices` | configured Emporia/Enphase devices |
+| GET | `/api/usage` | stored normalized usage (`?provider=` / `?limit=`) |
 | POST | `/api/collect` | one collection cycle |
 | GET | `/api/report` | last 500 rows |
 | GET | `/api/enphase/systems` | discovered Enphase sites |
