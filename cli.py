@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Thin CLI over a running solar-power-monitor HTTP service."""
+"""Thin CLI over a running power-monitor HTTP service."""
 
 from __future__ import annotations
 
@@ -24,11 +24,16 @@ def request(base: str, path: str, method: str = "GET") -> object:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="solar", description="Talk to solar-power-monitor")
+    parser = argparse.ArgumentParser(prog="power-monitor", description="Talk to power-monitor")
     parser.add_argument("--url", default=os.getenv("SOLAR_URL", "http://127.0.0.1:8094"))
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("health", help="service health")
     sub.add_parser("status", help="configured providers")
+    devices = sub.add_parser("devices", help="configured electricity devices")
+    devices.add_argument("--provider", help="filter by provider: enphase, emporia")
+    usage = sub.add_parser("usage", help="stored normalized usage")
+    usage.add_argument("--provider", help="filter by provider: enphase, emporia")
+    usage.add_argument("--limit", type=int, default=500)
     sub.add_parser("collect", help="run one collection cycle")
     report = sub.add_parser("report", help="recent stored readings")
     report.add_argument("--source", help="filter by provider: enphase, emporia, pge")
@@ -39,6 +44,14 @@ def main() -> int:
         print(json.dumps(request(args.url, "/health"), indent=2))
     elif args.cmd == "status":
         print(json.dumps(request(args.url, "/api/status"), indent=2))
+    elif args.cmd == "devices":
+        path = "/api/devices" + (("?provider=" + args.provider) if args.provider else "")
+        print(json.dumps(request(args.url, path), indent=2))
+    elif args.cmd == "usage":
+        query = []
+        if args.provider: query.append("provider=" + args.provider)
+        query.append("limit=" + str(args.limit))
+        print(json.dumps(request(args.url, "/api/usage?" + "&".join(query)), indent=2))
     elif args.cmd == "collect":
         print(json.dumps(request(args.url, "/api/collect", method="POST"), indent=2))
     elif args.cmd == "report":
