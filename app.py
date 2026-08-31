@@ -459,6 +459,10 @@ def report():
     return jsonify(rows=rows)
 
 
+from mcp_server import register_mcp
+register_mcp(app)
+
+
 def _collector_loop(interval: int):
     while True:
         time.sleep(interval)
