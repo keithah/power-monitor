@@ -14,6 +14,13 @@ import (
 )
 
 type Server struct{ App *app.App }
+type publicReading struct {
+	TS      string  `json:"ts"`
+	Source  string  `json:"source"`
+	Channel string  `json:"channel"`
+	Watts   float64 `json:"watts"`
+	KWh     float64 `json:"kwh"`
+}
 
 func New(a *app.App) Server { return Server{App: a} }
 
@@ -65,10 +72,10 @@ func (s Server) status() map[string]any {
 }
 
 func (s Server) systems(w http.ResponseWriter) {
-	out := []domain.Setup{}
+	out := []map[string]any{}
 	for _, setup := range s.App.Config.Setups {
 		if setup.Provider == "enphase" {
-			out = append(out, setup)
+			out = append(out, publicEnphase(setup))
 		}
 	}
 	if len(out) == 0 {
@@ -83,19 +90,33 @@ func (s Server) devices(w http.ResponseWriter, r *http.Request) {
 		write(w, http.StatusBadRequest, map[string]any{"status": "error", "error": "unknown provider " + strconv.Quote(provider)})
 		return
 	}
-	out := map[string]any{}
+	out := map[string][]map[string]any{}
 	for _, setup := range s.App.Config.Setups {
+		if setup.Provider != "enphase" && setup.Provider != "emporia" {
+			continue
+		}
 		if provider == "" || provider == setup.Provider {
-			out[setup.Provider] = appendSetup(out[setup.Provider], setup)
+			if setup.Provider == "enphase" {
+				out["enphase"] = append(out["enphase"], publicEnphase(setup))
+			} else {
+				out["emporia"] = append(out["emporia"], publicEmporia(setup))
+			}
 		}
 	}
 	write(w, http.StatusOK, map[string]any{"version": 1, "providers": out})
 }
-func appendSetup(v any, setup domain.Setup) []domain.Setup {
-	if v == nil {
-		return []domain.Setup{setup}
+func publicEnphase(s domain.Setup) map[string]any {
+	return map[string]any{"name": s.Name, "cloud": s.SiteID != "", "site_id": s.SiteID}
+}
+func publicEmporia(s domain.Setup) map[string]any {
+	return map[string]any{"name": s.Name, "device_gid": s.DeviceGID}
+}
+func publicReadings(in []domain.Reading) []publicReading {
+	out := make([]publicReading, 0, len(in))
+	for _, r := range in {
+		out = append(out, publicReading{TS: r.Timestamp.UTC().Format(time.RFC3339), Source: r.Provider, Channel: r.Channel, Watts: r.Watts, KWh: r.KWh})
 	}
-	return append(v.([]domain.Setup), setup)
+	return out
 }
 func (s Server) usage(w http.ResponseWriter, r *http.Request) {
 	limit, ok := limit(r, 500, 5000)
@@ -108,14 +129,14 @@ func (s Server) usage(w http.ResponseWriter, r *http.Request) {
 	if len(rows) > limit {
 		rows = rows[len(rows)-limit:]
 	}
-	write(w, http.StatusOK, map[string]any{"version": 1, "provider": nullIfEmpty(provider), "rows": rows})
+	write(w, http.StatusOK, map[string]any{"version": 1, "provider": nullIfEmpty(provider), "rows": publicReadings(rows)})
 }
 func (s Server) report(w http.ResponseWriter, r *http.Request) {
 	rows := s.App.Readings()
 	if len(rows) > 500 {
 		rows = rows[len(rows)-500:]
 	}
-	write(w, http.StatusOK, map[string]any{"rows": rows})
+	write(w, http.StatusOK, map[string]any{"rows": publicReadings(rows)})
 }
 func (s Server) collect(w http.ResponseWriter, r *http.Request) {
 	result, err := s.App.Collect(r.Context(), "")
