@@ -46,8 +46,19 @@ func TestHealthStatusUsageReportAndCollectCompatibility(t *testing.T) {
 		}
 	}
 
-	r := httptest.NewRequest(http.MethodGet, "/api/report", nil)
+	var status map[string]any
+	r := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if len(status) != 3 || status["version"] != float64(1) || status["service"] != "power-monitor" || status["providers"] == nil {
+		t.Fatalf("unexpected status: %#v", status)
+	}
+
+	r = httptest.NewRequest(http.MethodGet, "/api/report", nil)
+	w = httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	var report struct {
 		Rows []map[string]any `json:"rows"`

@@ -11,9 +11,9 @@
   "auth_context": {
     "type": "bearer_token"
   },
-  "source_fingerprint": "d33987bf55564c9028d215892b9598ee8e6018de833bbf662d8e4176faa96059",
+  "source_fingerprint": "2ab86c29fbfe504503eee2179296f3197dce7218de6a051d03ae4476740145d1",
   "source_files": {
-    "cmd/power-monitor-pp-api/main.go": "f6307738eab2b377f2e491bb59e31cb6f5a8c5f8c012de78dc1facf66c8d5de5",
+    "cmd/power-monitor-pp-api/main.go": "33f3bcae25447fcc55207767c46b4f2cddafb3635060eae405bf02c3c9f25fcb",
     "cmd/power-monitor-pp-cli/main.go": "daf9c50dc2d899407d1cf85c79f8c751deeb323d4bd1056998e47f0dc03bcf85",
     "cmd/power-monitor-pp-mcp/main.go": "17274fd0eaf482c1aecf37667c67c77ab2ef06fd81c05bd27472f2370de13a7c",
     "go.mod": "108d7a65004546e2630b64ce4aaf8e1ff0db5321640c7005fe9081b6b5309c8e",
@@ -34,12 +34,13 @@
     "internal/config/config_test.go": "5a53a24f7a3b52c2a60129a746883294b3c49fc9e1af77dee8b94d4f161f201e",
     "internal/domain/domain.go": "d97b0eef0b388243715b1ac27f8e8d64e2149a4f315a7199ea29bb417b065498",
     "internal/domain/domain_test.go": "9acb301b87426d7b5c680caac8ab8278a23abbfb5118359547f4bf60d5cd3e7f",
-    "internal/httpapi/server.go": "8f340dc5e485016e46c9c1afa1a383768bf10bbd39e3b6e32d61352af3bac873",
-    "internal/httpapi/server_test.go": "7fe0872ff21e6710b6a875621de0ff58e953a5d01f0568748863a436d1079173",
+    "internal/httpapi/listen_test.go": "e18d485518680a6a545a0611c6ba992bfab2346fe573925787e325192371d5b2",
+    "internal/httpapi/server.go": "8dc246e42f7003f4f66128afa504abbd77ba0250557b356637018464fb6b18e2",
+    "internal/httpapi/server_test.go": "2712e30a2c6f764894f5de690fec9def40cc442d2be389b4850d10f9b959a970",
     "internal/mcp/server.go": "edf8e01bba7f874d7ae2f772f63fb91112a85282ae9ba9eb10a021a7237dd912",
     "internal/mcp/server_test.go": "155bf9a785e606914a318f3b732f9c381b868f85a6bd6419424f06cbb3561b8a",
     "internal/store/store.go": "13320728b43505eaf2f31ddf3d87b59df69eec5a4ee6a96b205cf8a3cf10f2ec",
     "internal/store/store_test.go": "a571b497c2ebf3f9b40696f45cbb2abf890cfc99c91349b1361fb7035f3a434a",
-    "spec.yaml": "26f6b4a1baa85a9153965dcee75cfa462ac100f235e70691f18dfc409103d65a"
+    "spec.yaml": "d3cf83499ae3801920cd0bba0505628886d33fa540f69d26ed31b993c2f6d959"
   }
 }

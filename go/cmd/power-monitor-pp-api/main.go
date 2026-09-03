@@ -26,6 +26,9 @@ func run() error {
 	if addr == "" {
 		addr = "127.0.0.1:8097"
 	}
+	if err := httpapi.ValidateLoopbackAddress(addr); err != nil {
+		return err
+	}
 	return http.ListenAndServe(addr, httpapi.New(app.New(c, st)))
 }
 func main() {

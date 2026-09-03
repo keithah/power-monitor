@@ -2,36 +2,37 @@ openapi: 3.0.3
 info:
   title: Power Monitor
   version: 1.0.0
-  description: PG&E/Opower, Enphase, Emporia electricity monitoring
-security:
-  - bearerAuth: []
-components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: opaque
+  description: Staged, loopback-only REST compatibility API for Power Monitor.
 servers:
-  - url: http://127.0.0.1:8096
-    description: local staged power-monitor service
+  - url: http://127.0.0.1:8097
+    description: local staged power-monitor compatibility service
 paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        "200":
+          description: service is healthy
   /api/status:
     get:
       operationId: status
       responses:
         "200":
-          description: status
+          description: configured service and provider status
           content:
             application/json:
               schema:
                 type: object
+                required: [version, service, providers]
                 properties:
-                  status: {type: string}
-                  systems: {type: integer}
-                  readings: {type: integer}
+                  version: {type: integer, example: 1}
+                  service: {type: string, example: power-monitor}
+                  providers:
+                    type: object
+                    additionalProperties: {type: boolean}
   /api/collect:
     post:
       operationId: collect
       responses:
         "200":
-          description: collect result
+          description: provider collection result

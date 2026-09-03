@@ -4,6 +4,8 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,6 +29,27 @@ type publicReportReading struct {
 }
 
 func New(a *app.App) Server { return Server{App: a} }
+
+// ValidateLoopbackAddress keeps the staged compatibility API private. Production
+// exposure is an explicit cutover concern, not an incidental address override.
+func ValidateLoopbackAddress(addr string) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("API address must be host:port: %w", err)
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 {
+		return fmt.Errorf("API address has invalid port %q", port)
+	}
+	if host == "localhost" {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("staged API must bind a loopback address")
+	}
+	return nil
+}
 
 func (s Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
