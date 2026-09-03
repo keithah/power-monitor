@@ -46,8 +46,23 @@ func TestHealthStatusUsageReportAndCollectCompatibility(t *testing.T) {
 		}
 	}
 
-	r := httptest.NewRequest(http.MethodPost, "/api/collect", nil).WithContext(context.Background())
+	r := httptest.NewRequest(http.MethodGet, "/api/report", nil)
 	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	var report struct {
+		Rows []map[string]any `json:"rows"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &report); err != nil || len(report.Rows) == 0 {
+		t.Fatalf("report=%s err=%v", w.Body.String(), err)
+	}
+	for _, key := range []string{"ts", "source", "channel", "watts", "kwh", "raw"} {
+		if _, ok := report.Rows[0][key]; !ok {
+			t.Fatalf("report missing %q: %#v", key, report.Rows[0])
+		}
+	}
+
+	r = httptest.NewRequest(http.MethodPost, "/api/collect", nil).WithContext(context.Background())
+	w = httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("collect code=%d body=%s", w.Code, w.Body.String())

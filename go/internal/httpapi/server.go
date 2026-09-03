@@ -21,6 +21,10 @@ type publicReading struct {
 	Watts   float64 `json:"watts"`
 	KWh     float64 `json:"kwh"`
 }
+type publicReportReading struct {
+	publicReading
+	Raw any `json:"raw"`
+}
 
 func New(a *app.App) Server { return Server{App: a} }
 
@@ -118,6 +122,14 @@ func publicReadings(in []domain.Reading) []publicReading {
 	}
 	return out
 }
+func publicReportReadings(in []domain.Reading) []publicReportReading {
+	base := publicReadings(in)
+	out := make([]publicReportReading, 0, len(base))
+	for _, r := range base {
+		out = append(out, publicReportReading{publicReading: r, Raw: nil})
+	}
+	return out
+}
 func (s Server) usage(w http.ResponseWriter, r *http.Request) {
 	limit, ok := limit(r, 500, 5000)
 	if !ok {
@@ -136,7 +148,7 @@ func (s Server) report(w http.ResponseWriter, r *http.Request) {
 	if len(rows) > 500 {
 		rows = rows[len(rows)-500:]
 	}
-	write(w, http.StatusOK, map[string]any{"rows": publicReadings(rows)})
+	write(w, http.StatusOK, map[string]any{"rows": publicReportReadings(rows)})
 }
 func (s Server) collect(w http.ResponseWriter, r *http.Request) {
 	result, err := s.App.Collect(r.Context(), "")

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run staged Power Monitor collection every 15 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+RandomizedDelaySec=30
+Unit=power-monitor-go-collect.service
+
+[Install]
+WantedBy=timers.target
