@@ -1,0 +1,18 @@
+[Unit]
+Description=Staged Go Power Monitor REST compatibility API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/power-monitor-go
+EnvironmentFile=%h/power-monitor-go/power-monitor.env
+Environment=POWER_MONITOR_API_ADDR=127.0.0.1:8097
+ExecStart=%h/power-monitor-go/bin/power-monitor-pp-api
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

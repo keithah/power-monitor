@@ -31,6 +31,20 @@ builds:
       - linux_arm64
       - windows_amd64
       - windows_arm64
+  - id: power-monitor-pp-api
+    main: ./cmd/power-monitor-pp-api
+    binary: power-monitor-pp-api
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+    targets:
+      - darwin_amd64
+      - darwin_arm64
+      - linux_amd64
+      - linux_arm64
+      - windows_amd64
+      - windows_arm64
 archives:
   - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
@@ -49,3 +63,4 @@ brews:
     install: |
       bin.install "power-monitor-pp-cli"
       bin.install "power-monitor-pp-mcp"
+      bin.install "power-monitor-pp-api"
