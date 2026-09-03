@@ -1,0 +1,30 @@
+{
+  "schema_version": 2,
+  "generated_at": "2026-09-01T03:16:53.476798Z",
+  "printing_press_version": "4.31.3",
+  "api_name": "power-monitor",
+  "display_name": "Power Monitor",
+  "cli_name": "power-monitor-pp-cli",
+  "creator": {"name": "Keith", "handle": "keithah"},
+  "owner": "keithah",
+  "printer": "keithah",
+  "printer_name": "Keith",
+  "spec_path": "spec.yaml",
+  "spec_format": "openapi3",
+  "spec_source": "community",
+  "spec_checksum": "sha256:a5eb98d8fa1464953800c899571acbae2b6d72b94ef5425bea11fd4c77786a58",
+  "run_id": "20260901-031653",
+  "category": "monitoring",
+  "description": "PG&E/Opower, Enphase, Emporia electricity monitoring",
+  "mcp_binary": "power-monitor-pp-mcp",
+  "mcp_tool_count": 2,
+  "mcp_public_tool_count": 2,
+  "mcp_ready": "full",
+  "api_version": "1.0.0",
+  "auth_type": "cookie",
+  "novel_features": [
+    {"name":"Multi-provider collection","command":"collect","description":"Collect normalized electricity readings from configured Enphase, Emporia, and PG&E/Opower setups."},
+    {"name":"Explicit panel rollups","command":"aggregate <rollup>","description":"Aggregate named setups with explicit parent/subpanel double-count protection."},
+    {"name":"Native Streamable HTTP MCP","command":"power-monitor-pp-mcp","description":"Expose shared monitoring use cases through stateless Streamable HTTP MCP."}
+  ]
+}

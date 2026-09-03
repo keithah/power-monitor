@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "api_name": "power-monitor",
+  "cli_name": "power-monitor-pp-cli",
+  "run_id": "20260901-031653",
+  "status": "skip",
+  "skip_reason": "cookie-auth-no-harness-session",
+  "auth_context": {
+    "type": "cookie",
+    "api_key_available": false,
+    "browser_session_available": false,
+    "local_sqlite": true,
+    "local_network_only": true
+  },
+  "source_fingerprint": "f61ae2dd7ed300cfb0ce04dea518f402e7ac2019a0e3d615b8b0c981de249445",
+  "source_files": {
+    "go.mod": "108d7a65004546e2630b64ce4aaf8e1ff0db5321640c7005fe9081b6b5309c8e",
+    "spec.yaml": "a5eb98d8fa1464953800c899571acbae2b6d72b94ef5425bea11fd4c77786a58",
+    "go.sum": "714fc63440d7bca135ccd3d3909552f76dcc9de1a24569c078e697cbdc7d8e4c",
+    "cmd/power-monitor-pp-cli/main.go": "daf9c50dc2d899407d1cf85c79f8c751deeb323d4bd1056998e47f0dc03bcf85",
+    "cmd/power-monitor-pp-mcp/main.go": "24eac2054d8f723fad9a06395426e7147d9266d3d7f08a1f94013ed60c1e9ff1",
+    "internal/app/app.go": "e5929a495e744b463f8927835872e701bb00a042d59cd6f4f1fddc95cb629d6d",
+    "internal/config/config.go": "88657d841bd530fdefd07cd2e6d1a42649ff213942a1fc17e4d42437957db083",
+    "internal/config/config_test.go": "5a53a24f7a3b52c2a60129a746883294b3c49fc9e1af77dee8b94d4f161f201e",
+    "internal/config/compat_test.go": "93826879c96daa0a56396c86bd171c41df09f85541f40b93a5e973e8d8f387ba",
+    "internal/mcp/server.go": "10e4be7e22ce24a9e93503d9e84d43f055b2c16b1ed18821989bdb09bc38024a",
+    "internal/mcp/server_test.go": "b78a6356398b4f028ba55c7553c5a2c6ac6f62522ba58524ed9e20128ff5324a",
+    "internal/cli/root.go": "e92d836600dece85104393c75d8ec0c2cc7c01b01bc20d3beec44eead399446c",
+    "internal/domain/domain.go": "1495ab61e3dc71831012344150cbab1ec347cbb7c872df30accdd1385ac9f8fe",
+    "internal/domain/domain_test.go": "9acb301b87426d7b5c680caac8ab8278a23abbfb5118359547f4bf60d5cd3e7f",
+    "internal/client/providers_test.go": "2698a95860a1c691602d0974a9e9c32ca0c2968b57798b8569b2bda05ab645da",
+    "internal/client/providers.go": "727c55fac19247f9e465e89b0e1a374b93560000c001f890da2c2c7f0cbb456c",
+    "internal/client/opower_test.go": "fad2e9a2b644a0dcbe45f01885e115ad98e03ac863e6e2511431b49a4f0a6b2a",
+    "internal/store/store_test.go": "594000d62f429c39cd7a29d07285f42e5b5d09a632e3571d2c818acf793cd540",
+    "internal/store/store.go": "6b6ae0785428db5ffefb1010d54158528f9b434d9fceef38203b72849da017b1"
+  }
+}

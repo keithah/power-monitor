@@ -25,6 +25,22 @@ Opower   → utility import/export
 
 MCP is a bad primary interface here: collection is long-running, PG&E MFA is interactive, and agents should query stored readings rather than log into utilities. Keep credentials on the collector host.
 
+## Go rewrite (review / staging)
+
+The generated Go replacement is tracked in [`go/`](go/). It provides the same
+provider-oriented collector model, a shared CLI and native Streamable HTTP MCP,
+explicit multi-setup rollups, and interval-safe summaries. It remains staged:
+the Python service above is the active production collector until Go provider
+acceptance—including the standalone PG&E MFA-start flow—has completed.
+
+Run its independent checks from `go/`:
+
+```bash
+go test ./...
+go vet ./...
+go build ./...
+```
+
 ## Providers
 
 - **Enphase** — Enlighten username/password. Discovers sites and stores daily production. Optional LAN Envoy scan if cloud listing is empty.

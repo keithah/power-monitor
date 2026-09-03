@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "api_name": "power-monitor",
+  "run_id": "20260901-031653",
+  "status": "pass",
+  "level": "full",
+  "matrix_size": 3,
+  "tests_passed": 3,
+  "tests_skipped": 1,
+  "tests_unverified": 1,
+  "auth_context": {
+    "type": "cookie"
+  },
+  "source_fingerprint": "b3876e3576af61f4c1fbfcd1adec891c4a2fc9adb87ef0087cb900e9013c7548",
+  "source_files": {
+    "cmd/power-monitor-pp-cli/main.go": "daf9c50dc2d899407d1cf85c79f8c751deeb323d4bd1056998e47f0dc03bcf85",
+    "cmd/power-monitor-pp-mcp/main.go": "24eac2054d8f723fad9a06395426e7147d9266d3d7f08a1f94013ed60c1e9ff1",
+    "go.mod": "108d7a65004546e2630b64ce4aaf8e1ff0db5321640c7005fe9081b6b5309c8e",
+    "go.sum": "714fc63440d7bca135ccd3d3909552f76dcc9de1a24569c078e697cbdc7d8e4c",
+    "internal/app/app.go": "e1b25a77a5eb056f2394d2678970948ed3d5d12047e880612a9f6ef399c375ab",
+    "internal/app/summary.go": "40a013f79f7f88ca0763e625b3b6e055749cebc7b98510c0fdddb491a672f4c1",
+    "internal/app/summary_test.go": "577e29dd182efc8776f5f3f0aee745c112749b8e0c42d3de7f05c43f3a0e3460",
+    "internal/cli/root.go": "15f40d39e2cda2183c45cfa9d0bb2cb239b09fc48bbe14443711b6b6414cb220",
+    "internal/client/opower_test.go": "136c6c1d15a1dbe753468b402bb8ad9e949c2d31b46aedd6cf11dd390c191521",
+    "internal/client/providers.go": "2edd671bfc9b4898346e6e626989d873dedea862e2d9c39a37d7b8841f9f06bb",
+    "internal/client/providers_test.go": "ad6e6a6da567da2a3703d20f85b41da45942f0d697a6ee52b61c16430b439458",
+    "internal/config/compat_test.go": "93826879c96daa0a56396c86bd171c41df09f85541f40b93a5e973e8d8f387ba",
+    "internal/config/config.go": "88657d841bd530fdefd07cd2e6d1a42649ff213942a1fc17e4d42437957db083",
+    "internal/config/config_test.go": "5a53a24f7a3b52c2a60129a746883294b3c49fc9e1af77dee8b94d4f161f201e",
+    "internal/domain/domain.go": "d97b0eef0b388243715b1ac27f8e8d64e2149a4f315a7199ea29bb417b065498",
+    "internal/domain/domain_test.go": "9acb301b87426d7b5c680caac8ab8278a23abbfb5118359547f4bf60d5cd3e7f",
+    "internal/mcp/server.go": "479c2fcf674f65b3be72e4f75a2b255b4c92ef74f61dd25206fda790f3c1edb6",
+    "internal/mcp/server_test.go": "9f220d9b137aa68432116cb08359dd4120ac3012834c26da0f1a498ddae74149",
+    "internal/store/store.go": "cd89df65fcafba0b3d42ce0086085374a52ac31f46f221796041c8cc2bef9335",
+    "internal/store/store_test.go": "f989d0eb44f4080f3f4f5d68b8c9b46801fff7c23755bd9927c7d10d54958ecd",
+    "spec.yaml": "ab478468870b9780c7ad629ab02591991abd55d7bc8b2482326b9e2b05d769d9"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "id": "provider-legacy-env-and-report-mcp",
+  "applied_at": "2026-08-31",
+  "base_run_id": "",
+  "base_printing_press_version": "",
+  "summary": "Preserve deployed split provider environment credentials and expose bounded provider/setup/time filters consistently in local and MCP reports.",
+  "reason": "The existing Python deployment uses provider-specific environment variables rather than a single credential blob, and report/usage consumers need equivalent filtering across CLI, application, and MCP surfaces.",
+  "files": [
+    "internal/config/config.go",
+    "internal/client/providers.go",
+    "internal/store/store.go",
+    "internal/app/app.go",
+    "internal/cli/root.go",
+    "internal/mcp/server.go"
+  ],
+  "validated_outcome": "go test ./... passes with legacy credential resolution and filtered query paths."
+}
