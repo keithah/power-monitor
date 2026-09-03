@@ -325,12 +325,30 @@ func (e *Emporia) ensureAuth(ctx context.Context) error {
 	}
 	return e.Authenticate(ctx)
 }
-func (e *Emporia) Devices(ctx context.Context) ([]EmporiaDevice, error) {
+
+// withAuth retries exactly once after an authentication failure, which lets a
+// cached provider renew an expired Cognito credential without retrying other
+// upstream failures or hiding invalid configured credentials.
+func (e *Emporia) withAuth(ctx context.Context, request func() error) error {
 	if err := e.ensureAuth(ctx); err != nil {
-		return nil, err
+		return err
 	}
+	if err := request(); err != nil {
+		var providerErr *ProviderError
+		if !errors.As(err, &providerErr) || providerErr.Class != ErrAuthentication {
+			return err
+		}
+		e.Credentials, e.AuthHeader = "", ""
+		if err := e.Authenticate(ctx); err != nil {
+			return err
+		}
+		return request()
+	}
+	return nil
+}
+func (e *Emporia) Devices(ctx context.Context) ([]EmporiaDevice, error) {
 	var raw json.RawMessage
-	if err := e.do(ctx, http.MethodGet, "/v1/customers/devices", nil, &raw); err != nil {
+	if err := e.withAuth(ctx, func() error { return e.do(ctx, http.MethodGet, "/v1/customers/devices", nil, &raw) }); err != nil {
 		return nil, err
 	}
 	var v struct {
@@ -346,9 +364,6 @@ func (e *Emporia) Devices(ctx context.Context) ([]EmporiaDevice, error) {
 	return devices, nil
 }
 func (e *Emporia) Usages(ctx context.Context, gid any) ([]domain.Reading, error) {
-	if err := e.ensureAuth(ctx); err != nil {
-		return nil, err
-	}
 	u := url.Values{"device_gids": {fmt.Sprint(gid)}, "instant": {time.Now().UTC().Format(time.RFC3339)}, "scale": {"HOUR"}, "energy_unit": {"KILOWATT_HOURS"}}
 	path := "/v1/customers/devices/usages?" + u.Encode()
 	var v struct {
@@ -360,7 +375,7 @@ func (e *Emporia) Usages(ctx context.Context, gid any) ([]domain.Reading, error)
 			} `json:"channel_usages"`
 		} `json:"device_usages"`
 	}
-	if err := e.do(ctx, http.MethodGet, path, nil, &v); err != nil {
+	if err := e.withAuth(ctx, func() error { return e.do(ctx, http.MethodGet, path, nil, &v) }); err != nil {
 		return nil, err
 	}
 	ts := time.Now().UTC()
@@ -523,10 +538,17 @@ func (o *Opower) StartMFA(ctx context.Context) ([]MFAOption, error) {
 	}
 	return options, nil
 }
-func validMFAOption(option string) bool {
-	x := strings.ToLower(strings.TrimSpace(option))
-	return x == "email" || x == "phone"
+func canonicalMFAOption(option string) string {
+	switch strings.ToLower(strings.TrimSpace(option)) {
+	case "email":
+		return "Email"
+	case "phone":
+		return "Phone"
+	default:
+		return ""
+	}
 }
+func validMFAOption(option string) bool { return canonicalMFAOption(option) != "" }
 func (o *Opower) SelectMFA(ctx context.Context, option string) error {
 	if !validMFAOption(option) {
 		return perr(ErrMFARequired, errors.New("MFA option must be Email or Phone"))
@@ -547,7 +569,7 @@ func (o *Opower) SelectMFA(ctx context.Context, option string) error {
 			State string `json:"state"`
 		} `json:"actions"`
 	}
-	params := map[string]any{"username": firstNonEmpty(o.LoginData["retencrUsrname"], o.Username), "selectedChoice": strings.Title(strings.ToLower(strings.TrimSpace(option))), "isforgotpassword": false}
+	params := map[string]any{"username": firstNonEmpty(o.LoginData["retencrUsrname"], o.Username), "selectedChoice": canonicalMFAOption(option), "isforgotpassword": false}
 	if err := o.mfaAction(ctx, "handleChoiceofMFA", params, &res); err != nil {
 		return err
 	}

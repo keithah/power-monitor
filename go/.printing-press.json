@@ -12,7 +12,7 @@
   "spec_path": "spec.yaml",
   "spec_format": "openapi3",
   "spec_source": "community",
-  "spec_checksum": "sha256:a5eb98d8fa1464953800c899571acbae2b6d72b94ef5425bea11fd4c77786a58",
+  "spec_checksum": "sha256:26f6b4a1baa85a9153965dcee75cfa462ac100f235e70691f18dfc409103d65a",
   "run_id": "20260901-031653",
   "category": "monitoring",
   "description": "PG&E/Opower, Enphase, Emporia electricity monitoring",

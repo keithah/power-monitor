@@ -48,7 +48,7 @@ func TestSummaryCountsOnlyCompletedEmporiaIntervalsAndMarksUnmatchedCoverage(t *
 	if b.BranchesKWh["main:Branch_HVAC"] != 1 {
 		t.Fatalf("branches=%+v", b.BranchesKWh)
 	}
-	if b.BalanceAvailable || b.Coverage["enphase"] != "snapshot_current_day" || b.Coverage["emporia"] != "partial" || b.Coverage["pge"] != "partial" {
+	if b.BalanceAvailable || b.Coverage["enphase"] != "snapshot_current_day" || b.Coverage["emporia"] != "partial" || b.Coverage["pge"] != "complete" {
 		t.Fatalf("coverage=%+v", b)
 	}
 }
