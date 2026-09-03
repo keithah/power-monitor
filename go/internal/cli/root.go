@@ -28,6 +28,21 @@ func load() (*app.App, error) {
 	}
 	return app.New(c, st), nil
 }
+func loadForCollect(dryRun bool) (*app.App, error) {
+	c, err := config.Load(cfgPath)
+	if err != nil {
+		return nil, err
+	}
+	if dryRun {
+		return app.New(c, nil), nil
+	}
+	st, err := store.Open(config.DBPath())
+	if err != nil {
+		return nil, err
+	}
+	return app.New(c, st), nil
+}
+
 func out(v any) error { return json.NewEncoder(os.Stdout).Encode(v) }
 func Execute() error {
 	root := &cobra.Command{Use: "power-monitor-pp-cli", Version: "0.0.0-dev", SilenceUsage: true}
@@ -70,15 +85,21 @@ func cmdDoctor() *cobra.Command {
 }
 func cmdCollect() *cobra.Command {
 	var setup string
-	c := &cobra.Command{Use: "collect", RunE: func(*cobra.Command, []string) error {
-		a, e := load()
-		if e != nil {
-			return e
+	c := &cobra.Command{Use: "collect", RunE: func(cmd *cobra.Command, _ []string) error {
+		dryRun, err := cmd.Flags().GetBool("dry-run")
+		if err != nil {
+			return err
 		}
-		defer a.Store.Close()
-		v, e := a.Collect(context.Background(), setup)
-		if e != nil {
-			return e
+		a, err := loadForCollect(dryRun)
+		if err != nil {
+			return err
+		}
+		if a.Store != nil {
+			defer a.Store.Close()
+		}
+		v, err := a.Collect(context.Background(), setup)
+		if err != nil {
+			return err
 		}
 		return out(v)
 	}}

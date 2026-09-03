@@ -15,4 +15,3 @@ venv/
 .DS_Store
 
 go/.publish-validate-*/
-go/go/.publish-validate-*/

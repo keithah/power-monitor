@@ -11,7 +11,7 @@
   "auth_context": {
     "type": "bearer_token"
   },
-  "source_fingerprint": "90303aeced825a6cb6d3cbb07cfb17f811724aa2580f40f6fa1df5183ac53a23",
+  "source_fingerprint": "379582b8588400f690550c9f035cbbc0329d5acbcaf0d8c65586e60fd9cba261",
   "source_files": {
     "cmd/power-monitor-pp-cli/main.go": "daf9c50dc2d899407d1cf85c79f8c751deeb323d4bd1056998e47f0dc03bcf85",
     "cmd/power-monitor-pp-mcp/main.go": "17274fd0eaf482c1aecf37667c67c77ab2ef06fd81c05bd27472f2370de13a7c",
@@ -20,7 +20,8 @@
     "internal/app/app.go": "9a7cecd92c65b98b05253c9d3e0d140a5552bf277dca734f66a7fbc5e8510254",
     "internal/app/summary.go": "40a013f79f7f88ca0763e625b3b6e055749cebc7b98510c0fdddb491a672f4c1",
     "internal/app/summary_test.go": "577e29dd182efc8776f5f3f0aee745c112749b8e0c42d3de7f05c43f3a0e3460",
-    "internal/cli/root.go": "ec25750d1548016aa7bf3ec015f64f905cf2883903d233245d0507162c31eaba",
+    "internal/cli/collect_test.go": "5e582336fd607d837ac1ea83b89fba08cdb5dfb21335447cf4aa52744e313f7e",
+    "internal/cli/root.go": "be6e3cc39ea5693b665cecb97700e4dd7a482cea54e38e09c448816bbe02d65c",
     "internal/cli/root_test.go": "1321f96de3c353c7172bdc2fad2f6823c94e9da0761b8ed467b325fed3d858e6",
     "internal/client/opower_test.go": "5fbaa4eb8d091ac48373000e952abafa81daae9809ca0129a7093c7e750fe451",
     "internal/client/providers.go": "6b331833b1d058ef10d9f6760d0d5e57524aae6c26da1ddc4aae36b5daad5834",
