@@ -1,6 +1,8 @@
-.PHONY: build test lint install clean
+.PHONY: all build test lint install clean build-mcp install-mcp build-all
 
 BIN_EXT := $(if $(filter windows,$(shell go env GOOS)),.exe,)
+
+all: build-all
 
 build:
 	go build -o bin/power-monitor-pp-cli$(BIN_EXT) ./cmd/power-monitor-pp-cli

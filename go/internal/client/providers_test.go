@@ -3,12 +3,14 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/domain"
 )
@@ -95,6 +97,20 @@ func TestEmporiaCognitoAndUsageRequestShape(t *testing.T) {
 	}
 	if !authOK || !usageOK {
 		t.Fatalf("authOK=%v usageOK=%v", authOK, usageOK)
+	}
+}
+
+func TestEmporiaSkipsCurrentPartialHour(t *testing.T) {
+	now := time.Now().UTC()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"instant":%q,"device_usages":[{"channel_usages":[{"channel_id":"Mains","usage":2}] }]}`, now.Format(time.RFC3339))))
+	}))
+	defer srv.Close()
+	e := &Emporia{Client: Client{BaseURL: srv.URL, HTTP: srv.Client(), Credentials: "token"}}
+	rs, err := e.Usages(context.Background(), "42")
+	if err != nil || len(rs) != 0 {
+		t.Fatalf("current-hour data must not be finalized: readings=%#v err=%v", rs, err)
 	}
 }
 

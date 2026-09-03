@@ -1,25 +1,36 @@
 package main
 
 import (
+	"fmt"
+	"net/http"
+	"os"
+
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/app"
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/config"
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/mcp"
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/store"
-	"net/http"
-	"os"
 )
 
-func main() {
-	c, _ := config.Load(config.DefaultPath())
-	db := config.DBPath()
-	st, e := store.Open(db)
-	if e != nil {
-		panic(e)
+func run() error {
+	c, err := config.Load(config.DefaultPath())
+	if err != nil {
+		return err
+	}
+	st, err := store.Open(config.DBPath())
+	if err != nil {
+		return err
 	}
 	defer st.Close()
 	addr := os.Getenv("POWER_MONITOR_MCP_ADDR")
 	if addr == "" {
 		addr = "127.0.0.1:8095"
 	}
-	http.ListenAndServe(addr, mcp.Server{App: app.New(c, st), Token: os.Getenv("POWER_MONITOR_MCP_TOKEN")})
+	return http.ListenAndServe(addr, mcp.Server{App: app.New(c, st), Token: os.Getenv("POWER_MONITOR_MCP_TOKEN")})
+}
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }

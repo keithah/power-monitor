@@ -371,6 +371,11 @@ func (e *Emporia) Usages(ctx context.Context, gid any) ([]domain.Reading, error)
 	}
 	start := ts.Truncate(time.Hour)
 	end := start.Add(time.Hour)
+	// Emporia HOUR readings accumulate until the UTC hour closes. Persisting an
+	// open bucket would label a partial value as final and corrupt summaries.
+	if end.After(time.Now().UTC()) {
+		return nil, nil
+	}
 	out := []domain.Reading{}
 	for _, d := range v.DeviceUsages {
 		for _, ch := range d.ChannelUsages {
@@ -415,11 +420,12 @@ type MFASession interface {
 }
 
 type mfaState struct {
-	BrowserCookie    string         `json:"browsercookie,omitempty"`
-	ValidationCookie string         `json:"validationCookie,omitempty"`
-	ExpiryDateTime   string         `json:"expiryDateTime,omitempty"`
-	Credentials      string         `json:"credentials,omitempty"`
-	Cookies          []*http.Cookie `json:"cookies,omitempty"`
+	BrowserCookie    string            `json:"browsercookie,omitempty"`
+	ValidationCookie string            `json:"validationCookie,omitempty"`
+	ExpiryDateTime   string            `json:"expiryDateTime,omitempty"`
+	Credentials      string            `json:"credentials,omitempty"`
+	Cookies          []*http.Cookie    `json:"cookies,omitempty"`
+	Pending          map[string]string `json:"pending,omitempty"`
 }
 
 type Opower struct {
@@ -486,6 +492,16 @@ func (o *Opower) mfaAction(ctx context.Context, method string, params map[string
 	}}}, "aura.context": map[string]string{"app": "siteforce:loginApp2"}, "aura.pageURI": "/myaccount/s/login/", "aura.token": "null"}
 	return o.aura(ctx, body, out)
 }
+func mfaDeliveryOptions(values map[string]string) []MFAOption {
+	options := make([]MFAOption, 0, 2)
+	for _, label := range []string{"Email", "Phone"} {
+		if values[label] != "" {
+			options = append(options, MFAOption{Label: label, Value: label})
+		}
+	}
+	return options
+}
+
 func (o *Opower) StartMFA(ctx context.Context) ([]MFAOption, error) {
 	if o.MFA != nil {
 		return o.MFA.StartMFA(ctx)
@@ -498,49 +514,14 @@ func (o *Opower) StartMFA(ctx context.Context) ([]MFAOption, error) {
 			}
 		}
 	}
-	var res struct {
-		Actions []struct {
-			State       string `json:"state"`
-			ReturnValue struct {
-				ReturnValue struct {
-					EmailVal string      `json:"EmailVal"`
-					PhoneVal string      `json:"PhoneVal"`
-					Options  []MFAOption `json:"options"`
-				} `json:"returnValue"`
-			} `json:"returnValue"`
-		} `json:"actions"`
-	}
-	if err := o.mfaAction(ctx, "async_get_mfa_options", nil, &res); err != nil {
-		return nil, err
-	}
-	if len(res.Actions) == 0 || res.Actions[0].State != "SUCCESS" {
-		return nil, perr(ErrMFARequired, errors.New("PG&E MFA options unavailable"))
-	}
-	rv := res.Actions[0].ReturnValue.ReturnValue
-	options := rv.Options
+	options := mfaDeliveryOptions(o.LoginData)
 	if len(options) == 0 {
-		if rv.EmailVal != "" {
-			options = append(options, MFAOption{Label: "Email", Value: "Email"})
-		}
-		if rv.PhoneVal != "" {
-			options = append(options, MFAOption{Label: "Phone", Value: "Phone"})
-		}
-	}
-	masked := make([]MFAOption, 0, len(options))
-	for _, option := range options {
-		label := strings.Title(strings.ToLower(strings.TrimSpace(option.Label)))
-		if label != "Email" && label != "Phone" {
-			label = strings.Title(strings.ToLower(strings.TrimSpace(option.Value)))
-		}
-		if label == "Email" || label == "Phone" {
-			masked = append(masked, MFAOption{Label: label, Value: label})
-		}
-	}
-	if len(masked) == 0 {
 		return nil, perr(ErrMFARequired, errors.New("PG&E MFA returned no delivery options"))
 	}
-	o.mfaReady = true
-	return masked, nil
+	if err := o.persistMFAChallenge(); err != nil {
+		return nil, err
+	}
+	return options, nil
 }
 func validMFAOption(option string) bool {
 	x := strings.ToLower(strings.TrimSpace(option))
@@ -552,6 +533,11 @@ func (o *Opower) SelectMFA(ctx context.Context, option string) error {
 	}
 	if o.MFA != nil {
 		return o.MFA.SelectMFA(ctx, option)
+	}
+	if o.LoginData == nil || o.LoginData["encryptedTFT"] == "" {
+		if err := o.loadMFAState(); err != nil {
+			return perr(ErrMFARequired, errors.New("start MFA before selecting a delivery option"))
+		}
 	}
 	if o.Username == "" {
 		return perr(ErrMissingCredential, errors.New("PG&E username is required for MFA"))
@@ -572,11 +558,16 @@ func (o *Opower) SelectMFA(ctx context.Context, option string) error {
 		o.LoginData = map[string]string{}
 	}
 	o.LoginData["selectedChoice"] = params["selectedChoice"].(string)
-	return nil
+	return o.persistMFAChallenge()
 }
 func (o *Opower) VerifyMFA(ctx context.Context, code string) error {
 	if o.MFA != nil {
 		return o.MFA.VerifyMFA(ctx, code)
+	}
+	if o.LoginData == nil || o.LoginData["encryptedTFT"] == "" {
+		if err := o.loadMFAState(); err != nil {
+			return perr(ErrMFARequired, errors.New("start and select MFA before verifying a code"))
+		}
 	}
 	code = strings.TrimSpace(code)
 	if len(code) < 4 || len(code) > 8 {
@@ -634,6 +625,20 @@ func (o *Opower) VerifyMFA(ctx context.Context, code string) error {
 	o.LoginData["browsercookie"], o.LoginData["validationCookie"], o.LoginData["expiryDateTime"] = rv.WrapperObj.RetencrUsrname, rv.WrapperObj.EncryptedKey, rv.WrapperObj.ExpiryDateTime
 	return o.persistMFAState()
 }
+func (o *Opower) persistMFAChallenge() error {
+	if o.LoginData == nil || o.LoginData["retencrUsrname"] == "" || o.LoginData["encryptedTFT"] == "" {
+		return perr(ErrMFARequired, errors.New("PG&E MFA challenge has no usable state"))
+	}
+	data, err := json.Marshal(mfaState{Pending: o.LoginData})
+	if err != nil {
+		return err
+	}
+	if err = os.WriteFile(o.mfaPath(), data, 0600); err != nil {
+		return perr(ErrUnavailable, err)
+	}
+	return os.Chmod(o.mfaPath(), 0600)
+}
+
 func (o *Opower) persistMFAState() error {
 	if o.LoginData == nil || o.LoginData["browsercookie"] == "" || o.LoginData["validationCookie"] == "" {
 		return perr(ErrAuthentication, errors.New("PG&E MFA produced no usable session state"))
@@ -657,11 +662,14 @@ func (o *Opower) loadMFAState() error {
 		return err
 	}
 	var state mfaState
-	if json.Unmarshal(data, &state) != nil || (state.Credentials == "" && (state.BrowserCookie == "" || state.ValidationCookie == "")) {
+	if json.Unmarshal(data, &state) != nil || (state.Credentials == "" && (state.BrowserCookie == "" || state.ValidationCookie == "") && len(state.Pending) == 0) {
 		return errors.New("PG&E persisted session is unusable")
 	}
 	o.Credentials = state.Credentials
 	o.LoginData = map[string]string{"browsercookie": state.BrowserCookie, "validationCookie": state.ValidationCookie, "expiryDateTime": state.ExpiryDateTime}
+	for key, value := range state.Pending {
+		o.LoginData[key] = value
+	}
 	if hc, ok := o.HTTP.(*http.Client); ok {
 		if hc.Jar == nil {
 			hc.Jar, _ = cookiejar.New(nil)
@@ -686,6 +694,8 @@ func (o *Opower) Login(ctx context.Context) error {
 					RetMessage     string `json:"retMessage"`
 					RetencrUsrname string `json:"retencrUsrname"`
 					EncryptedTFT   string `json:"encryptedTFT"`
+					EmailVal       string `json:"EmailVal"`
+					PhoneVal       string `json:"PhoneVal"`
 				} `json:"returnValue"`
 			} `json:"returnValue"`
 		} `json:"actions"`
@@ -706,6 +716,12 @@ func (o *Opower) Login(ctx context.Context) error {
 		}
 		if rv.EncryptedTFT != "" {
 			o.LoginData["encryptedTFT"] = rv.EncryptedTFT
+		}
+		if rv.EmailVal != "" {
+			o.LoginData["Email"] = rv.EmailVal
+		}
+		if rv.PhoneVal != "" {
+			o.LoginData["Phone"] = rv.PhoneVal
 		}
 		o.mfaReady = true
 		return perr(ErrMFARequired, errors.New("PG&E MFA is required; use StartMFA, SelectMFA, and VerifyMFA"))

@@ -21,7 +21,7 @@
   "mcp_public_tool_count": 2,
   "mcp_ready": "full",
   "api_version": "1.0.0",
-  "auth_type": "cookie",
+  "auth_type": "bearer_token",
   "novel_features": [
     {"name":"Multi-provider collection","command":"collect","description":"Collect normalized electricity readings from configured Enphase, Emporia, and PG&E/Opower setups."},
     {"name":"Explicit panel rollups","command":"aggregate <rollup>","description":"Aggregate named setups with explicit parent/subpanel double-count protection."},

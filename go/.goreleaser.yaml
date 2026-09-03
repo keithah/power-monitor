@@ -9,7 +9,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X power-monitor-pp-cli/internal/cli.version={{ .Version }}
+      - -s -w
     targets:
       - darwin_amd64
       - darwin_arm64
@@ -23,7 +23,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X main.version={{ .Version }}
+      - -s -w
     targets:
       - darwin_amd64
       - darwin_arm64

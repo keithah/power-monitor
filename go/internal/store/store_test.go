@@ -44,6 +44,39 @@ func TestListFilteredAppliesProviderSetupAndTimeRange(t *testing.T) {
 	}
 }
 
+func TestOpenMigratesUnitAndPersistsIt(t *testing.T) {
+	path := t.TempDir() + "/legacy.db"
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE readings (k TEXT PRIMARY KEY, provider TEXT NOT NULL, setup TEXT NOT NULL, identity TEXT, channel TEXT NOT NULL, role TEXT, ts TEXT NOT NULL, watts REAL, kwh REAL); INSERT INTO readings VALUES ('legacy','pge','home','account','interval','utility','2026-09-02T07:00:00Z',0,-1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	reading := domain.Reading{Provider: "emporia", Setup: "panel", Channel: "Mains", Timestamp: time.Date(2026, 9, 3, 1, 0, 0, 0, time.UTC), KWh: 1, Unit: "kWh"}
+	if _, err = s.Put([]domain.Reading{reading}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range got {
+		if r.Key() == reading.Key() && r.Unit != "kWh" {
+			t.Fatalf("unit lost after migration: %#v", r)
+		}
+	}
+}
+
 func TestOpenMigratesAndReadsLegacyNullWindows(t *testing.T) {
 	path := t.TempDir() + "/legacy.db"
 	db, err := sql.Open("sqlite", path)

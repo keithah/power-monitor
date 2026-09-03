@@ -1,9 +1,9 @@
 package mcp
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/app"
 	"net/http"
 	"time"
@@ -80,7 +80,7 @@ func writeErr(w http.ResponseWriter, id json.RawMessage, code int, msg string) {
 	json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(id), "error": map[string]any{"code": code, "message": msg}})
 }
 func tools() []map[string]any {
-	names := []string{"status", "setup_list", "setup_show", "device_list", "collect_status", "usage", "summary", "aggregate", "report", "doctor", "pge_mfa_start", "pge_mfa_select", "pge_mfa_verify"}
+	names := []string{"status", "setup_list", "setup_show", "device_list", "usage", "summary", "aggregate", "report", "doctor"}
 	o := make([]map[string]any, len(names))
 	for i, n := range names {
 		o[i] = map[string]any{"name": n, "description": "read-only power monitor operation", "inputSchema": map[string]any{"type": "object"}}
@@ -109,8 +109,8 @@ func call(s Server, p map[string]any) (any, error) {
 			}
 		}
 		return nil, errors.New("setup not found")
-	case "collect_status":
-		return s.App.Collect(context.Background(), "")
+	case "collect_status", "pge_mfa_start", "pge_mfa_select", "pge_mfa_verify":
+		return nil, errors.New("mutating operation is not available through the read-only MCP server")
 	case "aggregate":
 		name, _ := args["rollup"].(string)
 		v, e := s.App.Aggregate(name)
@@ -119,32 +119,51 @@ func call(s Server, p map[string]any) (any, error) {
 		}
 		return map[string]any{"rollup": name, "kwh": v}, nil
 	case "usage":
-		return s.App.ReadingsFiltered(stringArg(args, "provider"), stringArg(args, "setup"), parseRFC3339(args, "from"), parseRFC3339(args, "to")), nil
+		from, to, err := parseRange(args)
+		if err != nil {
+			return nil, err
+		}
+		return s.App.ReadingsFiltered(stringArg(args, "provider"), stringArg(args, "setup"), from, to), nil
 	case "summary":
-		return s.App.Summary(stringArg(args, "period"), parseRFC3339(args, "from"), parseRFC3339(args, "to"))
+		from, to, err := parseRange(args)
+		if err != nil {
+			return nil, err
+		}
+		return s.App.Summary(stringArg(args, "period"), from, to)
 	case "report":
-		rs := s.App.ReadingsFiltered(stringArg(args, "provider"), stringArg(args, "setup"), parseRFC3339(args, "from"), parseRFC3339(args, "to"))
+		from, to, err := parseRange(args)
+		if err != nil {
+			return nil, err
+		}
+		rs := s.App.ReadingsFiltered(stringArg(args, "provider"), stringArg(args, "setup"), from, to)
 		return map[string]any{"readings": len(rs), "data": rs}, nil
 	case "doctor":
 		return map[string]any{"ok": app.Validate(s.App.Config) == nil}, nil
-	case "pge_mfa_start":
-		v, err := s.App.StartMFA(context.Background(), stringArg(args, "setup"))
-		return map[string]any{"options": v}, err
-	case "pge_mfa_select":
-		return map[string]any{"status": "selected"}, s.App.SelectMFA(context.Background(), stringArg(args, "setup"), stringArg(args, "option"))
-	case "pge_mfa_verify":
-		return map[string]any{"status": "verified"}, s.App.VerifyMFA(context.Background(), stringArg(args, "setup"), stringArg(args, "code"))
 	default:
 		return nil, errors.New("unknown tool")
 	}
 }
 
 func stringArg(args map[string]any, key string) string { v, _ := args[key].(string); return v }
-func parseRFC3339(args map[string]any, key string) time.Time {
+func parseRange(args map[string]any) (time.Time, time.Time, error) {
+	from, err := parseRFC3339(args, "from")
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	to, err := parseRFC3339(args, "to")
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	return from, to, nil
+}
+func parseRFC3339(args map[string]any, key string) (time.Time, error) {
 	v := stringArg(args, key)
 	if v == "" {
-		return time.Time{}
+		return time.Time{}, nil
 	}
-	t, _ := time.Parse(time.RFC3339, v)
-	return t
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%s must be RFC3339: %w", key, err)
+	}
+	return t, nil
 }

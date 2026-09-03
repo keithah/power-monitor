@@ -82,25 +82,41 @@ func TestOpowerPGESessionAccountsAndIntervals(t *testing.T) {
 	}
 }
 
-func TestOpowerStartMFAUsesExpectedAuraChallengeShape(t *testing.T) {
-	var got map[string]any
+func TestOpowerStartMFAReturnsOptionsFromLoginChallenge(t *testing.T) {
+	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		form, _ := url.ParseQuery(string(body))
-		_ = json.Unmarshal([]byte(form.Get("message")), &got)
+		calls++
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"actions":[{"state":"SUCCESS","returnValue":{"returnValue":{"options":[{"label":"Email","value":"Email"},{"label":"Phone","value":"Phone"}]}}}]}`))
+		_, _ = w.Write([]byte(`{"actions":[{"state":"SUCCESS","returnValue":{"returnValue":{"retMessage":"verifymfa :","retencrUsrname":"opaque-user","encryptedTFT":"opaque-token","EmailVal":"u***@example.com","PhoneVal":"***1234"}}}]}`))
 	}))
 	defer srv.Close()
-	o := &Opower{Client: Client{BaseURL: srv.URL, HTTP: srv.Client()}, LoginURL: srv.URL}
+	dir := t.TempDir()
+	o := &Opower{Client: Client{BaseURL: srv.URL, HTTP: srv.Client()}, LoginURL: srv.URL, Username: "user", Password: "password", MFAStatePath: dir + "/challenge.json"}
 	options, err := o.StartMFA(context.Background())
-	if err != nil || len(options) != 2 || options[0].Label != "Email" {
+	if err != nil || len(options) != 2 || options[0].Label != "Email" || options[1].Label != "Phone" {
 		t.Fatalf("options=%+v err=%v", options, err)
 	}
-	actions := got["actions"].([]any)
-	params := actions[0].(map[string]any)["params"].(map[string]any)
-	if params["classname"] != "MfaChallenge" || params["method"] != "async_get_mfa_options" {
-		t.Fatalf("unexpected action=%v", params)
+	if calls != 1 {
+		t.Fatalf("MFA options must use the login challenge, calls=%d", calls)
+	}
+}
+
+func TestOpowerPersistsPendingMFAChallenge(t *testing.T) {
+	path := t.TempDir() + "/pge-mfa.json"
+	original := &Opower{MFAStatePath: path, LoginData: map[string]string{"retencrUsrname": "opaque-user", "encryptedTFT": "opaque-token", "Email": "u***@example.com"}}
+	if err := original.persistMFAChallenge(); err != nil {
+		t.Fatal(err)
+	}
+	resumed := &Opower{MFAStatePath: path}
+	if err := resumed.loadMFAState(); err != nil {
+		t.Fatal(err)
+	}
+	if resumed.LoginData["retencrUsrname"] != "opaque-user" || resumed.LoginData["encryptedTFT"] != "opaque-token" || resumed.LoginData["Email"] != "u***@example.com" {
+		t.Fatalf("pending challenge did not survive: %#v", resumed.LoginData)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("state protection err=%v mode=%v", err, info.Mode())
 	}
 }
 
@@ -126,7 +142,7 @@ func TestOpowerSelectVerifyMFAExactShapeAndProtectedState(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	o := &Opower{Client: Client{BaseURL: srv.URL, HTTP: srv.Client(), Credentials: "token"}, LoginURL: srv.URL, Username: "user", Password: "password", MFAStatePath: dir + "/pge-login.json", LoginData: map[string]string{"encryptedTFT": "enc"}}
+	o := &Opower{Client: Client{BaseURL: srv.URL, HTTP: srv.Client(), Credentials: "token"}, LoginURL: srv.URL, Username: "user", Password: "password", MFAStatePath: dir + "/pge-login.json", LoginData: map[string]string{"encryptedTFT": "enc", "retencrUsrname": "user"}}
 	if err := o.SelectMFA(context.Background(), "Phone"); err != nil {
 		t.Fatal(err)
 	}

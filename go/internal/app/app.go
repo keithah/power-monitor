@@ -7,14 +7,17 @@ import (
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/config"
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/domain"
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/store"
+	"sync"
 	"time"
 )
 
 type App struct {
-	Config    domain.Config
-	Store     *store.Store
-	Now       func() time.Time
-	Providers map[string]client.Provider
+	Config     domain.Config
+	Store      *store.Store
+	Now        func() time.Time
+	Providers  map[string]client.Provider
+	providerMu sync.Mutex
+	collectMu  sync.Mutex
 }
 
 func New(c domain.Config, st *store.Store) *App {
@@ -23,20 +26,32 @@ func New(c domain.Config, st *store.Store) *App {
 func (a *App) Status() map[string]any {
 	return map[string]any{"setups": len(a.Config.Setups), "rollups": len(a.Config.Rollups), "storage": a.Store != nil}
 }
+func (a *App) providerFor(s domain.Setup) (client.Provider, error) {
+	a.providerMu.Lock()
+	defer a.providerMu.Unlock()
+	if p := a.Providers[s.Name]; p != nil {
+		return p, nil
+	}
+	p, err := client.Configured(s)
+	if err != nil {
+		return nil, err
+	}
+	a.Providers[s.Name] = p
+	return p, nil
+}
+
 func (a *App) Collect(ctx context.Context, name string) (map[string]any, error) {
+	a.collectMu.Lock()
+	defer a.collectMu.Unlock()
 	result := map[string]any{}
 	for _, s := range a.Config.Setups {
 		if name != "" && s.Name != name {
 			continue
 		}
-		p := a.Providers[s.Name]
-		if p == nil {
-			var err error
-			p, err = client.Configured(s)
-			if err != nil {
-				result[s.Name] = map[string]any{"status": "error", "error": err.Error()}
-				continue
-			}
+		p, err := a.providerFor(s)
+		if err != nil {
+			result[s.Name] = map[string]any{"status": "error", "error": err.Error()}
+			continue
 		}
 		rs, e := p.Collect(ctx, s)
 		if e != nil {
@@ -73,17 +88,13 @@ func (a *App) Aggregate(name string) (float64, error) {
 	return 0, fmt.Errorf("rollup %q not found", name)
 }
 func (a *App) pge(ctx context.Context, name string) (*client.Opower, error) {
-	p := a.Providers[name]
-	if p == nil {
-		s, err := config.Select(a.Config, name)
-		if err != nil {
-			return nil, err
-		}
-		p, err = client.Configured(s)
-		if err != nil {
-			return nil, err
-		}
-		a.Providers[name] = p
+	s, err := config.Select(a.Config, name)
+	if err != nil {
+		return nil, err
+	}
+	p, err := a.providerFor(s)
+	if err != nil {
+		return nil, err
 	}
 	o, ok := p.(*client.Opower)
 	if !ok {

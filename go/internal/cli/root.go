@@ -88,8 +88,11 @@ func cmdCollect() *cobra.Command {
 func cmdUsage() *cobra.Command {
 	var provider, setup, from, to string
 	c := &cobra.Command{Use: "usage", RunE: func(*cobra.Command, []string) error {
+		start, end, err := parseRange(from, to)
+		if err != nil {
+			return err
+		}
 		return run(func(a *app.App) any {
-			start, end := parseTime(from), parseTime(to)
 			return a.ReadingsFiltered(provider, setup, start, end)
 		})
 	}}
@@ -102,12 +105,16 @@ func cmdUsage() *cobra.Command {
 func cmdSummary() *cobra.Command {
 	var period, from, to string
 	c := &cobra.Command{Use: "summary", RunE: func(*cobra.Command, []string) error {
+		start, end, err := parseRange(from, to)
+		if err != nil {
+			return err
+		}
 		a, e := load()
 		if e != nil {
 			return e
 		}
 		defer a.Store.Close()
-		v, e := a.Summary(period, parseTime(from), parseTime(to))
+		v, e := a.Summary(period, start, end)
 		if e != nil {
 			return e
 		}
@@ -119,12 +126,27 @@ func cmdSummary() *cobra.Command {
 	return c
 }
 
-func parseTime(v string) time.Time {
-	if v == "" {
-		return time.Time{}
+func parseRange(from, to string) (time.Time, time.Time, error) {
+	start, err := parseTime(from)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("--from: %w", err)
 	}
-	t, _ := time.Parse(time.RFC3339, v)
-	return t
+	end, err := parseTime(to)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("--to: %w", err)
+	}
+	return start, end, nil
+}
+
+func parseTime(v string) (time.Time, error) {
+	if v == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("must be RFC3339: %w", err)
+	}
+	return t, nil
 }
 func cmdAggregate() *cobra.Command {
 	return &cobra.Command{Use: "aggregate <rollup>", Args: cobra.ExactArgs(1), RunE: func(_ *cobra.Command, args []string) error {
@@ -143,8 +165,12 @@ func cmdAggregate() *cobra.Command {
 func cmdReport() *cobra.Command {
 	var provider, setup, from, to string
 	c := &cobra.Command{Use: "report", RunE: func(*cobra.Command, []string) error {
+		start, end, err := parseRange(from, to)
+		if err != nil {
+			return err
+		}
 		return run(func(a *app.App) any {
-			rs := a.ReadingsFiltered(provider, setup, parseTime(from), parseTime(to))
+			rs := a.ReadingsFiltered(provider, setup, start, end)
 			return map[string]any{"status": a.Status(), "readings": len(rs), "data": rs}
 		})
 	}}
