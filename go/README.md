@@ -26,7 +26,9 @@ MFA options are masked and codes, cookies, and tokens are never returned. The
 verified wrapper state is persisted with mode 0600 in a filename derived from
 `POWER_MONITOR_PGE_LOGIN_PATH` (or `/data/pge-login.json`) and the named setup,
 so separate PG&E setups never share MFA/session state. Collection resumes only
-the matching setup's state when usable.
+the matching setup's state when usable. For the loopback REST compatibility API,
+pass `?setup=NAME` to every `/api/pge/mfa/start`, `/select`, and `/verify` request
+when more than one PG&E/Opower setup is configured; ambiguous requests are rejected.
 
 ## Interval-safe reporting
 

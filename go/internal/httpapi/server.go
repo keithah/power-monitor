@@ -181,17 +181,36 @@ func (s Server) collect(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, http.StatusOK, result)
 }
-func (s Server) pgeSetup() (string, bool) {
+func (s Server) pgeSetup(r *http.Request) (name string, configured bool, err error) {
+	requested := strings.TrimSpace(r.URL.Query().Get("setup"))
+	var candidates []string
 	for _, setup := range s.App.Config.Setups {
-		if setup.Provider == "pge" || setup.Provider == "opower" {
-			return setup.Name, true
+		if setup.Provider != "pge" && setup.Provider != "opower" {
+			continue
+		}
+		candidates = append(candidates, setup.Name)
+		if requested != "" && setup.Name == requested {
+			return setup.Name, true, nil
 		}
 	}
-	return "", false
+	if len(candidates) == 0 {
+		return "", false, nil
+	}
+	if requested != "" {
+		return "", true, fmt.Errorf("PG&E setup %q not found (candidates: %s)", requested, strings.Join(candidates, ", "))
+	}
+	if len(candidates) == 1 {
+		return candidates[0], true, nil
+	}
+	return "", true, fmt.Errorf("multiple PG&E setups are configured; specify the setup query parameter")
 }
 func (s Server) startMFA(w http.ResponseWriter, r *http.Request) {
-	name, ok := s.pgeSetup()
-	if !ok {
+	name, configured, err := s.pgeSetup(r)
+	if err != nil {
+		write(w, http.StatusBadRequest, map[string]any{"status": "error", "error": err.Error()})
+		return
+	}
+	if !configured {
 		write(w, http.StatusServiceUnavailable, map[string]any{"status": "not_configured"})
 		return
 	}
@@ -203,8 +222,12 @@ func (s Server) startMFA(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, map[string]any{"status": "mfa_required", "options": options})
 }
 func (s Server) selectMFA(w http.ResponseWriter, r *http.Request) {
-	name, ok := s.pgeSetup()
-	if !ok {
+	name, configured, err := s.pgeSetup(r)
+	if err != nil {
+		write(w, http.StatusBadRequest, map[string]any{"status": "error", "error": err.Error()})
+		return
+	}
+	if !configured {
 		write(w, http.StatusConflict, map[string]any{"status": "error", "error": "Start MFA first"})
 		return
 	}
@@ -223,8 +246,12 @@ func (s Server) selectMFA(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusOK, map[string]any{"status": "code_sent", "option": in.Option})
 }
 func (s Server) verifyMFA(w http.ResponseWriter, r *http.Request) {
-	name, ok := s.pgeSetup()
-	if !ok {
+	name, configured, err := s.pgeSetup(r)
+	if err != nil {
+		write(w, http.StatusBadRequest, map[string]any{"status": "error", "error": err.Error()})
+		return
+	}
+	if !configured {
 		write(w, http.StatusConflict, map[string]any{"status": "error", "error": "Start MFA first"})
 		return
 	}

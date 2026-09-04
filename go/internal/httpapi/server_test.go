@@ -15,6 +15,27 @@ import (
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/store"
 )
 
+type recordingMFASession struct {
+	starts   int
+	selects  []string
+	verifies []string
+}
+
+func (m *recordingMFASession) StartMFA(context.Context) ([]client.MFAOption, error) {
+	m.starts++
+	return []client.MFAOption{{Label: "Email", Value: "Email"}}, nil
+}
+
+func (m *recordingMFASession) SelectMFA(_ context.Context, option string) error {
+	m.selects = append(m.selects, option)
+	return nil
+}
+
+func (m *recordingMFASession) VerifyMFA(_ context.Context, code string) error {
+	m.verifies = append(m.verifies, code)
+	return nil
+}
+
 func TestHealthStatusUsageReportAndCollectCompatibility(t *testing.T) {
 	st, err := store.Open(t.TempDir() + "/power.sqlite")
 	if err != nil {
@@ -101,5 +122,40 @@ func TestUsageRejectsInvalidLimitAndMFAPreconditions(t *testing.T) {
 		if w.Code != tc.want {
 			t.Fatalf("%s %s: code=%d body=%s", tc.method, tc.path, w.Code, w.Body.String())
 		}
+	}
+}
+
+func TestMFAEndpointsRouteExplicitPGESetupAndRejectAmbiguity(t *testing.T) {
+	north := &recordingMFASession{}
+	south := &recordingMFASession{}
+	a := app.New(domain.Config{Setups: []domain.Setup{
+		{Name: "north", Provider: "pge", CredentialEnv: "PGE_NORTH"},
+		{Name: "south", Provider: "opower", CredentialEnv: "PGE_SOUTH"},
+	}}, nil)
+	a.Providers["north"] = &client.Opower{MFA: north}
+	a.Providers["south"] = &client.Opower{MFA: south}
+	h := New(a)
+
+	for _, tc := range []struct {
+		method, path, body string
+		want               int
+	}{
+		{http.MethodPost, "/api/pge/mfa/start?setup=south", "", http.StatusOK},
+		{http.MethodPost, "/api/pge/mfa/select?setup=south", `{"option":"Email"}`, http.StatusOK},
+		{http.MethodPost, "/api/pge/mfa/verify?setup=south", `{"code":"123456"}`, http.StatusOK},
+		{http.MethodPost, "/api/pge/mfa/start", "", http.StatusBadRequest},
+	} {
+		r := httptest.NewRequest(tc.method, tc.path, bytes.NewBufferString(tc.body))
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != tc.want {
+			t.Fatalf("%s %s: code=%d body=%s", tc.method, tc.path, w.Code, w.Body.String())
+		}
+	}
+	if north.starts != 0 || len(north.selects) != 0 || len(north.verifies) != 0 {
+		t.Fatalf("north setup received MFA calls: %+v", north)
+	}
+	if south.starts != 1 || len(south.selects) != 1 || len(south.verifies) != 1 {
+		t.Fatalf("south setup did not receive all MFA calls: %+v", south)
 	}
 }
