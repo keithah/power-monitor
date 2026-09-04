@@ -20,22 +20,14 @@ metadata:
 
 ## Prerequisites: Install the CLI
 
-This skill drives the `power-monitor-pp-cli` binary. **You must verify the CLI is installed before invoking any command from this skill.** If it is missing, install it first:
+This staged CLI is not yet published as an audited immutable Printing Press
+release. Do not substitute a live catalog lookup, `@latest`, or an arbitrary
+source revision. Before invoking this skill outside this repository, obtain a
+published release record that names both the package version and the immutable
+source commit, then verify `power-monitor-pp-cli --version` from that release.
 
-1. Install via the Printing Press installer. It defaults binaries to `$HOME/.local/bin` on macOS/Linux and `%LOCALAPPDATA%\Programs\PrintingPress\bin` on Windows:
-   ```bash
-   npx -y @mvanhorn/printing-press-library install power-monitor --cli-only
-   ```
-2. Verify: `power-monitor-pp-cli --version`
-3. Ensure the reported install directory is on `$PATH` for the agent/runtime that will invoke this skill.
-
-If the `npx` install fails (no Node, offline, etc.), fall back to a direct Go install (requires Go 1.26.6 or newer). This installs into `$GOPATH/bin` (default `$HOME/go/bin`), so add that directory to `$PATH` instead:
-
-```bash
-go install github.com/mvanhorn/printing-press-library/library/monitoring/power-monitor/cmd/power-monitor-pp-cli@latest
-```
-
-If `--version` reports "command not found" after install, the runtime cannot see the binary directory on `$PATH`. Do not proceed with skill commands until verification succeeds.
+Until then, use only an audited checkout of this repository and its local build
+and test workflow; do not present a registry install command as available.
 
 PG&E/Opower, Enphase, Emporia electricity monitoring
 

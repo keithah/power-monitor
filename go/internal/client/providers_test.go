@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -140,6 +142,50 @@ func TestConfiguredUsesProviderSpecificLegacyCredentials(t *testing.T) {
 		t.Fatalf("unexpected Emporia config: email=%q", em.Email)
 	}
 }
+
+func TestConfiguredScopesPGEMFAStateBySetup(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("POWER_MONITOR_PGE_LOGIN_PATH", filepath.Join(dir, "pge-login.json"))
+	if scopedMFAStatePath("pge/home") == scopedMFAStatePath("pge_home") {
+		t.Fatal("distinct setup names must not collide after filename sanitization")
+	}
+	t.Setenv("PGE_ALPHA", `{"username":"alpha-user","password":"alpha-password"}`)
+	t.Setenv("PGE_BETA", `{"username":"beta-user","password":"beta-password"}`)
+
+	alphaProvider, err := Configured(domain.Setup{Name: "alpha", Provider: "pge", CredentialEnv: "PGE_ALPHA"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	betaProvider, err := Configured(domain.Setup{Name: "beta", Provider: "opower", CredentialEnv: "PGE_BETA"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	alpha := alphaProvider.(*Opower)
+	beta := betaProvider.(*Opower)
+	if alpha.MFAStatePath == beta.MFAStatePath || alpha.MFAStatePath == os.Getenv("POWER_MONITOR_PGE_LOGIN_PATH") || beta.MFAStatePath == os.Getenv("POWER_MONITOR_PGE_LOGIN_PATH") {
+		t.Fatalf("named PG&E setups must not share the configured state path: alpha=%q beta=%q", alpha.MFAStatePath, beta.MFAStatePath)
+	}
+	alpha.LoginData = map[string]string{"retencrUsrname": "alpha-session", "encryptedTFT": "alpha-challenge"}
+	beta.LoginData = map[string]string{"retencrUsrname": "beta-session", "encryptedTFT": "beta-challenge"}
+	if err := alpha.persistMFAChallenge(); err != nil {
+		t.Fatal(err)
+	}
+	if err := beta.persistMFAChallenge(); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, path, want string
+	}{{"alpha", alpha.MFAStatePath, "alpha-session"}, {"beta", beta.MFAStatePath, "beta-session"}} {
+		resumed := &Opower{MFAStatePath: tc.path}
+		if err := resumed.loadMFAState(); err != nil {
+			t.Fatalf("%s resume: %v", tc.name, err)
+		}
+		if resumed.LoginData["retencrUsrname"] != tc.want {
+			t.Fatalf("%s resumed state=%q want %q", tc.name, resumed.LoginData["retencrUsrname"], tc.want)
+		}
+	}
+}
+
 func TestProviderNormalization(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

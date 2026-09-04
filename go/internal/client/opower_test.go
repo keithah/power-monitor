@@ -247,6 +247,23 @@ func TestOpowerCollectConvertsKWhAndUsesSetup(t *testing.T) {
 	}
 }
 
+func TestOpowerCollectPreservesAccountDiscoveryAuthenticationError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "customers") {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	o := &Opower{Client: Client{BaseURL: srv.URL, HTTP: srv.Client(), Credentials: "expired-token"}}
+	_, err := o.Collect(context.Background(), domain.Setup{Name: "home", Provider: "pge"})
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) || providerErr.Class != ErrAuthentication {
+		t.Fatalf("account discovery error must preserve authentication class: %T %v", err, err)
+	}
+}
+
 func TestOpowerCollectsEveryDiscoveredAccount(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

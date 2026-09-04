@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -490,6 +492,37 @@ func (o *Opower) mfaPath() string {
 	}
 	return "/data/pge-login.json"
 }
+
+// scopedMFAStatePath prevents one named PG&E/Opower setup from overwriting
+// another setup's pending MFA challenge or resumed session. The configured path
+// supplies the directory and base name; the setup name is made filename-safe.
+func scopedMFAStatePath(setup string) string {
+	base := os.Getenv("POWER_MONITOR_PGE_LOGIN_PATH")
+	if base == "" {
+		base = "/data/pge-login.json"
+	}
+	name := filenameSegment(setup)
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(filepath.Base(base), ext)
+	digest := sha256.Sum256([]byte(setup))
+	return filepath.Join(filepath.Dir(base), stem+"-"+name+"-"+fmt.Sprintf("%x", digest[:6])+ext)
+}
+
+func filenameSegment(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "default"
+	}
+	var b strings.Builder
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
+}
 func (o *Opower) mfaSession() MFASession {
 	if o.MFA != nil {
 		return o.MFA
@@ -878,7 +911,10 @@ func (o *Opower) Collect(ctx context.Context, s domain.Setup) ([]domain.Reading,
 		}
 	}
 	accounts, e := o.Accounts(ctx)
-	if e != nil || len(accounts) == 0 {
+	if e != nil {
+		return nil, e
+	}
+	if len(accounts) == 0 {
 		return nil, perr(ErrUpstream, errors.New("no PG&E accounts discovered"))
 	}
 	selected := []OpowerAccount{}
@@ -975,7 +1011,7 @@ func Configured(s domain.Setup) (Provider, error) {
 		if base == "" {
 			base = "https://pge.opower.com"
 		}
-		return &Opower{Client: Client{BaseURL: base, HTTP: http.DefaultClient}, Username: v.Username, Password: v.Password, Utility: "pge"}, nil
+		return &Opower{Client: Client{BaseURL: base, HTTP: http.DefaultClient}, Username: v.Username, Password: v.Password, Utility: "pge", MFAStatePath: scopedMFAStatePath(s.Name)}, nil
 	}
 	return nil, fmt.Errorf("unsupported provider %q", s.Provider)
 }
