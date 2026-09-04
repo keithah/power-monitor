@@ -23,8 +23,10 @@ accounts through the Opower customer endpoint, and reads interval usage through
 DataBrowser-v1. When login returns `verifymfa :`, use `pge mfa-start`,
 `pge mfa-select --option Email|Phone`, and `pge mfa-verify --code CODE`.
 MFA options are masked and codes, cookies, and tokens are never returned. The
-verified wrapper state is persisted at `POWER_MONITOR_PGE_LOGIN_PATH` (or
-`/data/pge-login.json`) with mode 0600, and collection resumes it when usable.
+verified wrapper state is persisted with mode 0600 in a filename derived from
+`POWER_MONITOR_PGE_LOGIN_PATH` (or `/data/pge-login.json`) and the named setup,
+so separate PG&E setups never share MFA/session state. Collection resumes only
+the matching setup's state when usable.
 
 ## Interval-safe reporting
 

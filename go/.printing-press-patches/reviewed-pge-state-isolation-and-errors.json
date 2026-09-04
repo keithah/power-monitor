@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "id": "reviewed-pge-state-isolation-and-errors",
+  "applied_at": "2026-09-03",
+  "base_run_id": "20260901-031653",
+  "base_printing_press_version": "4.31.3",
+  "summary": "Scope PG&E persisted MFA/session state to the named setup and preserve account-discovery error classes.",
+  "reason": "Deep review found that multiple named PG&E/Opower setups shared one persisted state file, and account discovery replaced authentication and transport errors with an empty-account error.",
+  "files": [
+    "internal/client/providers.go",
+    "internal/client/providers_test.go",
+    "internal/client/opower_test.go",
+    "README.md"
+  ],
+  "validated_outcome": "Two named PG&E setups persist and resume distinct MFA challenge state, while account-discovery authentication failures remain classified for callers."
+}
