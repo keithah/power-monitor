@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -136,6 +137,14 @@ func (m *cancellationMFASession) VerifyMFA(ctx context.Context, _ string) error 
 	return nil
 }
 
+type preconditionMFASession struct{}
+
+func (preconditionMFASession) StartMFA(context.Context) ([]client.MFAOption, error) { return nil, nil }
+func (preconditionMFASession) SelectMFA(context.Context, string) error              { return nil }
+func (preconditionMFASession) VerifyMFA(context.Context, string) error {
+	return &client.ProviderError{Class: client.ErrMFARequired, Err: errors.New("select an MFA delivery option before verifying a code")}
+}
+
 type blockingHTTPMFASession struct {
 	entered chan struct{}
 	release chan struct{}
@@ -181,6 +190,18 @@ func TestMFAEndpointsRouteExplicitPGESetupAndRejectAmbiguity(t *testing.T) {
 	}
 	if south.starts != 1 || len(south.selects) != 1 || len(south.verifies) != 1 {
 		t.Fatalf("south setup did not receive all MFA calls: %+v", south)
+	}
+}
+
+func TestVerifyMFARejectsConfiguredUnselectedChallenge(t *testing.T) {
+	a := app.New(domain.Config{Setups: []domain.Setup{{Name: "home", Provider: "pge", CredentialEnv: "PGE_HOME"}}}, nil)
+	a.Providers["home"] = &client.Opower{MFA: preconditionMFASession{}}
+	h := New(a)
+	r := httptest.NewRequest(http.MethodPost, "/api/pge/mfa/verify", bytes.NewBufferString(`{"code":"123456"}`))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("verify code=%d body=%s", w.Code, w.Body.String())
 	}
 }
 

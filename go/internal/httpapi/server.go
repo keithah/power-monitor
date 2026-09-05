@@ -3,6 +3,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/app"
+	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/client"
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/domain"
 )
 
@@ -263,6 +265,11 @@ func (s Server) verifyMFA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.App.VerifyMFA(r.Context(), name, in.Code); err != nil {
+		var providerErr *client.ProviderError
+		if errors.As(err, &providerErr) && providerErr.Class == client.ErrMFARequired {
+			write(w, http.StatusConflict, map[string]any{"status": "error", "error": err.Error()})
+			return
+		}
 		write(w, http.StatusBadGateway, map[string]any{"status": "error", "error": err.Error()})
 		return
 	}
