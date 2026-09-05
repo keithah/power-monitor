@@ -142,6 +142,21 @@ func TestOpowerStartMFAReturnsOptionsFromLoginChallenge(t *testing.T) {
 	}
 }
 
+func TestOpowerMFAStateLockHonorsCrossInstanceCancellation(t *testing.T) {
+	path := t.TempDir() + "/pge-mfa.json"
+	first := &Opower{MFAStatePath: path}
+	second := &Opower{MFAStatePath: path}
+	if err := first.lockMFA(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer first.unlockMFA()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := second.lockMFA(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("second process-equivalent lock error=%v", err)
+	}
+}
+
 func TestWriteMFAStateAtomicallyReplacesExistingState(t *testing.T) {
 	path := t.TempDir() + "/pge-mfa.json"
 	if err := os.WriteFile(path, []byte("old-state"), 0600); err != nil {

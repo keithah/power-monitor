@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/domain"
@@ -565,36 +564,18 @@ func (o *Opower) lockMFA(ctx context.Context) error {
 	if o.MFA != nil || (o.MFAStatePath == "" && os.Getenv("POWER_MONITOR_PGE_LOGIN_PATH") == "") {
 		return nil
 	}
-	lock, err := os.OpenFile(o.mfaPath()+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	lock, err := lockMFAState(ctx, o.mfaPath()+".lock")
 	if err != nil {
 		o.mfaMu.Unlock()
 		return perr(ErrUnavailable, err)
 	}
-	for {
-		err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil {
-			o.mfaLockFile = lock
-			return nil
-		}
-		if err != syscall.EWOULDBLOCK && err != syscall.EAGAIN {
-			lock.Close()
-			o.mfaMu.Unlock()
-			return perr(ErrUnavailable, err)
-		}
-		select {
-		case <-ctx.Done():
-			lock.Close()
-			o.mfaMu.Unlock()
-			return ctx.Err()
-		case <-time.After(10 * time.Millisecond):
-		}
-	}
+	o.mfaLockFile = lock
+	return nil
 }
 
 func (o *Opower) unlockMFA() {
 	if o.mfaLockFile != nil {
-		_ = syscall.Flock(int(o.mfaLockFile.Fd()), syscall.LOCK_UN)
-		_ = o.mfaLockFile.Close()
+		_ = unlockMFAState(o.mfaLockFile)
 		o.mfaLockFile = nil
 	}
 	o.mfaMu.Unlock()
@@ -621,7 +602,7 @@ func (o *Opower) clearMFASession() error {
 	if hc, ok := o.HTTP.(*http.Client); ok {
 		hc.Jar, _ = cookiejar.New(nil)
 	}
-	if err := os.Remove(o.mfaPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := removeMFAState(o.mfaPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return perr(ErrUnavailable, err)
 	}
 	return nil
@@ -802,7 +783,10 @@ func writeMFAState(path string, data []byte) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	return syncMFAStateDir(path)
 }
 
 func (o *Opower) persistMFAChallenge() error {
