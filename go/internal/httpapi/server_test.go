@@ -125,6 +125,17 @@ func TestUsageRejectsInvalidLimitAndMFAPreconditions(t *testing.T) {
 	}
 }
 
+type cancellationMFASession struct{ verifyErr error }
+
+func (m *cancellationMFASession) StartMFA(context.Context) ([]client.MFAOption, error) {
+	return nil, nil
+}
+func (m *cancellationMFASession) SelectMFA(context.Context, string) error { return nil }
+func (m *cancellationMFASession) VerifyMFA(ctx context.Context, _ string) error {
+	m.verifyErr = ctx.Err()
+	return nil
+}
+
 func TestMFAEndpointsRouteExplicitPGESetupAndRejectAmbiguity(t *testing.T) {
 	north := &recordingMFASession{}
 	south := &recordingMFASession{}
@@ -157,5 +168,20 @@ func TestMFAEndpointsRouteExplicitPGESetupAndRejectAmbiguity(t *testing.T) {
 	}
 	if south.starts != 1 || len(south.selects) != 1 || len(south.verifies) != 1 {
 		t.Fatalf("south setup did not receive all MFA calls: %+v", south)
+	}
+}
+
+func TestVerifyMFAUsesRequestContext(t *testing.T) {
+	mfa := &cancellationMFASession{}
+	a := app.New(domain.Config{Setups: []domain.Setup{{Name: "home", Provider: "pge", CredentialEnv: "PGE_HOME"}}}, nil)
+	a.Providers["home"] = &client.Opower{MFA: mfa}
+	h := New(a)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := httptest.NewRequest(http.MethodPost, "/api/pge/mfa/verify", bytes.NewBufferString(`{"code":"123456"}`)).WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK || mfa.verifyErr != context.Canceled {
+		t.Fatalf("verify code=%d context error=%v", w.Code, mfa.verifyErr)
 	}
 }

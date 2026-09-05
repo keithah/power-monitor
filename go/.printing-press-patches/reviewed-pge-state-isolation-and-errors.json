@@ -4,13 +4,15 @@
   "applied_at": "2026-09-03",
   "base_run_id": "20260901-031653",
   "base_printing_press_version": "4.31.3",
-  "summary": "Scope PG&E persisted MFA/session state to the named setup and preserve account-discovery error classes.",
-  "reason": "Deep review found that multiple named PG&E/Opower setups shared one persisted state file, and account discovery replaced authentication and transport errors with an empty-account error.",
+  "summary": "Scope PG&E persisted MFA/session state and in-memory HTTP sessions to the named setup, serialize each setup's MFA state machine, preserve account-discovery error classes, and honor REST request cancellation.",
+  "reason": "Deep review found that multiple named PG&E/Opower setups shared a persisted state file and the global HTTP cookie jar, concurrent MFA calls could interleave mutable setup state, account discovery replaced authentication and transport errors with an empty-account error, and REST verification detached upstream work from request cancellation.",
   "files": [
     "internal/client/providers.go",
     "internal/client/providers_test.go",
     "internal/client/opower_test.go",
+    "internal/httpapi/server.go",
+    "internal/httpapi/server_test.go",
     "README.md"
   ],
-  "validated_outcome": "Two named PG&E setups persist and resume distinct MFA challenge state, while account-discovery authentication failures remain classified for callers."
+  "validated_outcome": "Two named PG&E setups use independent persisted state and HTTP cookie jars; each setup serializes collection and MFA transitions; cancellation reaches REST verification; and account-discovery authentication failures remain classified for callers."
 }

@@ -2,7 +2,6 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -263,7 +262,7 @@ func (s Server) verifyMFA(w http.ResponseWriter, r *http.Request) {
 		write(w, http.StatusBadRequest, map[string]any{"status": "error", "error": "A valid MFA code is required"})
 		return
 	}
-	if err := s.App.VerifyMFA(context.Background(), name, in.Code); err != nil {
+	if err := s.App.VerifyMFA(r.Context(), name, in.Code); err != nil {
 		write(w, http.StatusBadGateway, map[string]any{"status": "error", "error": err.Error()})
 		return
 	}

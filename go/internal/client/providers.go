@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/domain"
@@ -452,6 +453,7 @@ type Opower struct {
 	LoginData                   map[string]string
 	MFA                         MFASession
 	MFAStatePath                string
+	mfaMu                       sync.Mutex
 	mfaReady                    bool
 	Now                         func() time.Time
 }
@@ -551,11 +553,13 @@ func mfaDeliveryOptions(values map[string]string) []MFAOption {
 }
 
 func (o *Opower) StartMFA(ctx context.Context) ([]MFAOption, error) {
+	o.mfaMu.Lock()
+	defer o.mfaMu.Unlock()
 	if o.MFA != nil {
 		return o.MFA.StartMFA(ctx)
 	}
 	if !o.mfaReady && o.LoginData["retencrUsrname"] == "" && o.Username != "" {
-		if err := o.Login(ctx); err != nil {
+		if err := o.login(ctx); err != nil {
 			var pe *ProviderError
 			if !errors.As(err, &pe) || pe.Class != ErrMFARequired {
 				return nil, err
@@ -583,6 +587,8 @@ func canonicalMFAOption(option string) string {
 }
 func validMFAOption(option string) bool { return canonicalMFAOption(option) != "" }
 func (o *Opower) SelectMFA(ctx context.Context, option string) error {
+	o.mfaMu.Lock()
+	defer o.mfaMu.Unlock()
 	if !validMFAOption(option) {
 		return perr(ErrMFARequired, errors.New("MFA option must be Email or Phone"))
 	}
@@ -616,6 +622,8 @@ func (o *Opower) SelectMFA(ctx context.Context, option string) error {
 	return o.persistMFAChallenge()
 }
 func (o *Opower) VerifyMFA(ctx context.Context, code string) error {
+	o.mfaMu.Lock()
+	defer o.mfaMu.Unlock()
 	if o.MFA != nil {
 		return o.MFA.VerifyMFA(ctx, code)
 	}
@@ -734,6 +742,12 @@ func (o *Opower) loadMFAState() error {
 	return nil
 }
 func (o *Opower) Login(ctx context.Context) error {
+	o.mfaMu.Lock()
+	defer o.mfaMu.Unlock()
+	return o.login(ctx)
+}
+
+func (o *Opower) login(ctx context.Context) error {
 	if o.Username == "" || o.Password == "" {
 		return perr(ErrMissingCredential, errors.New("PG&E credentials not configured"))
 	}
@@ -902,11 +916,13 @@ func (o *Opower) Intervals(ctx context.Context, account string) ([]OpowerInterva
 	return out, nil
 }
 func (o *Opower) Collect(ctx context.Context, s domain.Setup) ([]domain.Reading, error) {
+	o.mfaMu.Lock()
+	defer o.mfaMu.Unlock()
 	if o.Credentials == "" {
 		_ = o.loadMFAState()
 	}
 	if o.Credentials == "" {
-		if err := o.Login(ctx); err != nil {
+		if err := o.login(ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -1011,7 +1027,11 @@ func Configured(s domain.Setup) (Provider, error) {
 		if base == "" {
 			base = "https://pge.opower.com"
 		}
-		return &Opower{Client: Client{BaseURL: base, HTTP: http.DefaultClient}, Username: v.Username, Password: v.Password, Utility: "pge", MFAStatePath: scopedMFAStatePath(s.Name)}, nil
+		jar, err := cookiejar.New(nil)
+		if err != nil {
+			return nil, fmt.Errorf("create PG&E cookie jar: %w", err)
+		}
+		return &Opower{Client: Client{BaseURL: base, HTTP: &http.Client{Jar: jar}}, Username: v.Username, Password: v.Password, Utility: "pge", MFAStatePath: scopedMFAStatePath(s.Name)}, nil
 	}
 	return nil, fmt.Errorf("unsupported provider %q", s.Provider)
 }

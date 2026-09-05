@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -183,6 +184,60 @@ func TestConfiguredScopesPGEMFAStateBySetup(t *testing.T) {
 		if resumed.LoginData["retencrUsrname"] != tc.want {
 			t.Fatalf("%s resumed state=%q want %q", tc.name, resumed.LoginData["retencrUsrname"], tc.want)
 		}
+	}
+}
+
+type blockingMFASession struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (m *blockingMFASession) StartMFA(context.Context) ([]MFAOption, error) {
+	m.once.Do(func() { close(m.entered) })
+	<-m.release
+	return []MFAOption{{Label: "Email", Value: "Email"}}, nil
+}
+func (m *blockingMFASession) SelectMFA(context.Context, string) error { return nil }
+func (m *blockingMFASession) VerifyMFA(context.Context, string) error { return nil }
+
+func TestConfiguredPGESetupsUseIndependentCookieJars(t *testing.T) {
+	t.Setenv("PGE_ALPHA", `{"username":"alpha-user","password":"alpha-password"}`)
+	t.Setenv("PGE_BETA", `{"username":"beta-user","password":"beta-password"}`)
+	alphaProvider, err := Configured(domain.Setup{Name: "alpha", Provider: "pge", CredentialEnv: "PGE_ALPHA"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	betaProvider, err := Configured(domain.Setup{Name: "beta", Provider: "opower", CredentialEnv: "PGE_BETA"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	alpha := alphaProvider.(*Opower).HTTP.(*http.Client)
+	beta := betaProvider.(*Opower).HTTP.(*http.Client)
+	if alpha == beta || alpha == http.DefaultClient || beta == http.DefaultClient || alpha.Jar == nil || beta.Jar == nil || alpha.Jar == beta.Jar {
+		t.Fatal("configured PG&E setups must have independent HTTP clients and cookie jars")
+	}
+}
+
+func TestOpowerSerializesConcurrentMFAForOneSetup(t *testing.T) {
+	mfa := &blockingMFASession{entered: make(chan struct{}), release: make(chan struct{})}
+	o := &Opower{MFA: mfa}
+	first := make(chan error, 1)
+	second := make(chan error, 1)
+	go func() { _, err := o.StartMFA(context.Background()); first <- err }()
+	<-mfa.entered
+	go func() { _, err := o.StartMFA(context.Background()); second <- err }()
+	select {
+	case err := <-second:
+		t.Fatalf("second MFA request entered before the first completed: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(mfa.release)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-second; err != nil {
+		t.Fatal(err)
 	}
 }
 
