@@ -575,7 +575,7 @@ func (o *Opower) clearMFAChallenge() {
 	}
 }
 
-func (o *Opower) clearMFASession() {
+func (o *Opower) clearMFASession() error {
 	o.clearMFAChallenge()
 	o.Credentials = ""
 	if o.LoginData != nil {
@@ -586,6 +586,10 @@ func (o *Opower) clearMFASession() {
 	if hc, ok := o.HTTP.(*http.Client); ok {
 		hc.Jar, _ = cookiejar.New(nil)
 	}
+	if err := os.Remove(o.mfaPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return perr(ErrUnavailable, err)
+	}
+	return nil
 }
 
 func (o *Opower) StartMFA(ctx context.Context) ([]MFAOption, error) {
@@ -597,7 +601,9 @@ func (o *Opower) StartMFA(ctx context.Context) ([]MFAOption, error) {
 		return o.MFA.StartMFA(ctx)
 	}
 	if o.mfaReady || (o.LoginData != nil && o.LoginData["retencrUsrname"] != "") || (o.LoginData != nil && o.LoginData["browsercookie"] != "") {
-		o.clearMFASession()
+		if err := o.clearMFASession(); err != nil {
+			return nil, err
+		}
 	}
 	if o.Username != "" {
 		if err := o.login(ctx); err != nil {

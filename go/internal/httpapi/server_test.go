@@ -239,6 +239,27 @@ func TestVerifyMFARejectsMalformedCodes(t *testing.T) {
 	}
 }
 
+func TestMFAEndpointsRejectMalformedJSON(t *testing.T) {
+	a := app.New(domain.Config{Setups: []domain.Setup{{Name: "home", Provider: "pge", CredentialEnv: "PGE_HOME"}}}, nil)
+	a.Providers["home"] = &client.Opower{MFA: &recordingMFASession{}}
+	h := New(a)
+	for _, tc := range []struct {
+		path, body string
+	}{
+		{"/api/pge/mfa/select", `{"option":"Email"}junk`},
+		{"/api/pge/mfa/select", `{"option":"Email"}{}`},
+		{"/api/pge/mfa/verify", `{"code":"1234"}junk`},
+		{"/api/pge/mfa/verify", `{"code":"1234"}{}`},
+	} {
+		r := httptest.NewRequest(http.MethodPost, tc.path, bytes.NewBufferString(tc.body))
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("%s %q: got %d body=%s", tc.path, tc.body, w.Code, w.Body.String())
+		}
+	}
+}
+
 func TestVerifyMFAUsesRequestContext(t *testing.T) {
 	mfa := &cancellationMFASession{}
 	a := app.New(domain.Config{Setups: []domain.Setup{{Name: "home", Provider: "pge", CredentialEnv: "PGE_HOME"}}}, nil)

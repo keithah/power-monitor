@@ -216,6 +216,41 @@ func TestOpowerStartMFAAfterVerificationCreatesFreshChallenge(t *testing.T) {
 	}
 }
 
+func TestOpowerFailedFreshMFAStartDoesNotRestoreCompletedSession(t *testing.T) {
+	var loginCalls, accountCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "customers") {
+			accountCalls++
+			return
+		}
+		loginCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"actions":[]}`))
+	}))
+	defer srv.Close()
+	path := t.TempDir() + "/pge-mfa.json"
+	data, err := json.Marshal(mfaState{Credentials: "completed-token", BrowserCookie: "completed-browser", ValidationCookie: "completed-validation"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	o := &Opower{Client: Client{BaseURL: srv.URL, HTTP: srv.Client(), Credentials: "completed-token"}, LoginURL: srv.URL, Username: "user", Password: "password", MFAStatePath: path, LoginData: map[string]string{"browsercookie": "completed-browser", "validationCookie": "completed-validation"}}
+	if _, err := o.StartMFA(context.Background()); err == nil {
+		t.Fatal("fresh MFA start unexpectedly succeeded")
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("completed session was retained after failed restart: %v", err)
+	}
+	if _, err := o.Collect(context.Background(), domain.Setup{Name: "home", Provider: "pge"}); err == nil {
+		t.Fatal("collection unexpectedly succeeded")
+	}
+	if loginCalls != 2 || accountCalls != 0 {
+		t.Fatalf("failed restart restored completed session: loginCalls=%d accountCalls=%d", loginCalls, accountCalls)
+	}
+}
+
 func TestOpowerSelectVerifyMFAExactShapeAndProtectedState(t *testing.T) {
 	dir := t.TempDir()
 	var selectParams, verifyParams map[string]any

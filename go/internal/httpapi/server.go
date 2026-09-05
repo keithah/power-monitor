@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -230,6 +231,21 @@ func mfaErrorStatus(err error) int {
 	return http.StatusBadGateway
 }
 
+func decodeMFAJSON(body io.Reader, out any) error {
+	decoder := json.NewDecoder(body)
+	if err := decoder.Decode(out); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return errors.New("request body must contain one JSON object")
+		}
+		return err
+	}
+	return nil
+}
+
 func (s Server) selectMFA(w http.ResponseWriter, r *http.Request) {
 	name, configured, err := s.pgeSetup(r)
 	if err != nil {
@@ -243,7 +259,10 @@ func (s Server) selectMFA(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Option string `json:"option"`
 	}
-	json.NewDecoder(r.Body).Decode(&in)
+	if err := decodeMFAJSON(r.Body, &in); err != nil {
+		write(w, http.StatusBadRequest, map[string]any{"status": "error", "error": "option must be valid JSON"})
+		return
+	}
 	if in.Option != "Email" && in.Option != "Phone" {
 		write(w, http.StatusBadRequest, map[string]any{"status": "error", "error": "option must be Email or Phone"})
 		return
@@ -267,7 +286,10 @@ func (s Server) verifyMFA(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Code string `json:"code"`
 	}
-	json.NewDecoder(r.Body).Decode(&in)
+	if err := decodeMFAJSON(r.Body, &in); err != nil {
+		write(w, http.StatusBadRequest, map[string]any{"status": "error", "error": "code must be valid JSON"})
+		return
+	}
 	code := strings.TrimSpace(in.Code)
 	if len(code) < 4 || len(code) > 8 || strings.Trim(code, "0123456789") != "" {
 		write(w, http.StatusBadRequest, map[string]any{"status": "error", "error": "A valid MFA code is required"})
