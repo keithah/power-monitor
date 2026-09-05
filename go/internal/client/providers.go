@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/mvanhorn/printing-press-library/library/power-monitor/internal/domain"
@@ -454,6 +455,7 @@ type Opower struct {
 	MFA                         MFASession
 	MFAStatePath                string
 	mfaMu                       sync.Mutex
+	mfaLockFile                 *os.File
 	mfaReady                    bool
 	Now                         func() time.Time
 }
@@ -553,16 +555,49 @@ func mfaDeliveryOptions(values map[string]string) []MFAOption {
 }
 
 func (o *Opower) lockMFA(ctx context.Context) error {
-	for {
-		if o.mfaMu.TryLock() {
-			return nil
-		}
+	for !o.mfaMu.TryLock() {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
+	if o.MFA != nil || (o.MFAStatePath == "" && os.Getenv("POWER_MONITOR_PGE_LOGIN_PATH") == "") {
+		return nil
+	}
+	lock, err := os.OpenFile(o.mfaPath()+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		o.mfaMu.Unlock()
+		return perr(ErrUnavailable, err)
+	}
+	for {
+		err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			o.mfaLockFile = lock
+			return nil
+		}
+		if err != syscall.EWOULDBLOCK && err != syscall.EAGAIN {
+			lock.Close()
+			o.mfaMu.Unlock()
+			return perr(ErrUnavailable, err)
+		}
+		select {
+		case <-ctx.Done():
+			lock.Close()
+			o.mfaMu.Unlock()
+			return ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+func (o *Opower) unlockMFA() {
+	if o.mfaLockFile != nil {
+		_ = syscall.Flock(int(o.mfaLockFile.Fd()), syscall.LOCK_UN)
+		_ = o.mfaLockFile.Close()
+		o.mfaLockFile = nil
+	}
+	o.mfaMu.Unlock()
 }
 
 func (o *Opower) clearMFAChallenge() {
@@ -596,14 +631,12 @@ func (o *Opower) StartMFA(ctx context.Context) ([]MFAOption, error) {
 	if err := o.lockMFA(ctx); err != nil {
 		return nil, err
 	}
-	defer o.mfaMu.Unlock()
+	defer o.unlockMFA()
 	if o.MFA != nil {
 		return o.MFA.StartMFA(ctx)
 	}
-	if o.mfaReady || (o.LoginData != nil && o.LoginData["retencrUsrname"] != "") || (o.LoginData != nil && o.LoginData["browsercookie"] != "") {
-		if err := o.clearMFASession(); err != nil {
-			return nil, err
-		}
+	if err := o.clearMFASession(); err != nil {
+		return nil, err
 	}
 	if o.Username != "" {
 		if err := o.login(ctx); err != nil {
@@ -637,7 +670,7 @@ func (o *Opower) SelectMFA(ctx context.Context, option string) error {
 	if err := o.lockMFA(ctx); err != nil {
 		return err
 	}
-	defer o.mfaMu.Unlock()
+	defer o.unlockMFA()
 	if !validMFAOption(option) {
 		return perr(ErrMFARequired, errors.New("MFA option must be Email or Phone"))
 	}
@@ -674,7 +707,7 @@ func (o *Opower) VerifyMFA(ctx context.Context, code string) error {
 	if err := o.lockMFA(ctx); err != nil {
 		return err
 	}
-	defer o.mfaMu.Unlock()
+	defer o.unlockMFA()
 	if o.MFA != nil {
 		return o.MFA.VerifyMFA(ctx, code)
 	}
@@ -746,6 +779,32 @@ func (o *Opower) VerifyMFA(ctx context.Context, code string) error {
 	o.clearMFAChallenge()
 	return nil
 }
+func writeMFAState(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	file, err := os.CreateTemp(dir, ".pge-mfa-*")
+	if err != nil {
+		return err
+	}
+	tmp := file.Name()
+	defer os.Remove(tmp)
+	if err := file.Chmod(0600); err != nil {
+		file.Close()
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
 func (o *Opower) persistMFAChallenge() error {
 	if o.LoginData == nil || o.LoginData["retencrUsrname"] == "" || o.LoginData["encryptedTFT"] == "" {
 		return perr(ErrMFARequired, errors.New("PG&E MFA challenge has no usable state"))
@@ -754,10 +813,10 @@ func (o *Opower) persistMFAChallenge() error {
 	if err != nil {
 		return err
 	}
-	if err = os.WriteFile(o.mfaPath(), data, 0600); err != nil {
+	if err = writeMFAState(o.mfaPath(), data); err != nil {
 		return perr(ErrUnavailable, err)
 	}
-	return os.Chmod(o.mfaPath(), 0600)
+	return nil
 }
 
 func (o *Opower) persistMFAState() error {
@@ -772,10 +831,10 @@ func (o *Opower) persistMFAState() error {
 	if err != nil {
 		return err
 	}
-	if err = os.WriteFile(o.mfaPath(), data, 0600); err != nil {
+	if err = writeMFAState(o.mfaPath(), data); err != nil {
 		return perr(ErrUnavailable, err)
 	}
-	return os.Chmod(o.mfaPath(), 0600)
+	return nil
 }
 func (o *Opower) loadMFAState() error {
 	data, err := os.ReadFile(o.mfaPath())
@@ -803,7 +862,7 @@ func (o *Opower) Login(ctx context.Context) error {
 	if err := o.lockMFA(ctx); err != nil {
 		return err
 	}
-	defer o.mfaMu.Unlock()
+	defer o.unlockMFA()
 	return o.login(ctx)
 }
 
@@ -925,7 +984,7 @@ func (o *Opower) Accounts(ctx context.Context) ([]OpowerAccount, error) {
 	if err := o.lockMFA(ctx); err != nil {
 		return nil, err
 	}
-	defer o.mfaMu.Unlock()
+	defer o.unlockMFA()
 	return o.accounts(ctx)
 }
 
@@ -965,7 +1024,7 @@ func (o *Opower) Intervals(ctx context.Context, account string) ([]OpowerInterva
 	if err := o.lockMFA(ctx); err != nil {
 		return nil, err
 	}
-	defer o.mfaMu.Unlock()
+	defer o.unlockMFA()
 	return o.intervals(ctx, account)
 }
 
@@ -995,7 +1054,7 @@ func (o *Opower) Collect(ctx context.Context, s domain.Setup) ([]domain.Reading,
 	if err := o.lockMFA(ctx); err != nil {
 		return nil, err
 	}
-	defer o.mfaMu.Unlock()
+	defer o.unlockMFA()
 	if o.Credentials == "" {
 		_ = o.loadMFAState()
 	}

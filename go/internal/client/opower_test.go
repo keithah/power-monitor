@@ -142,6 +142,24 @@ func TestOpowerStartMFAReturnsOptionsFromLoginChallenge(t *testing.T) {
 	}
 }
 
+func TestWriteMFAStateAtomicallyReplacesExistingState(t *testing.T) {
+	path := t.TempDir() + "/pge-mfa.json"
+	if err := os.WriteFile(path, []byte("old-state"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeMFAState(path, []byte("new-state")); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "new-state" {
+		t.Fatalf("state=%q err=%v", data, err)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("state protection err=%v mode=%v", err, info.Mode())
+	}
+}
+
 func TestOpowerPersistsPendingMFAChallenge(t *testing.T) {
 	path := t.TempDir() + "/pge-mfa.json"
 	original := &Opower{MFAStatePath: path, LoginData: map[string]string{"retencrUsrname": "opaque-user", "encryptedTFT": "opaque-token", "Email": "u***@example.com"}}
@@ -236,7 +254,7 @@ func TestOpowerFailedFreshMFAStartDoesNotRestoreCompletedSession(t *testing.T) {
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	o := &Opower{Client: Client{BaseURL: srv.URL, HTTP: srv.Client(), Credentials: "completed-token"}, LoginURL: srv.URL, Username: "user", Password: "password", MFAStatePath: path, LoginData: map[string]string{"browsercookie": "completed-browser", "validationCookie": "completed-validation"}}
+	o := &Opower{Client: Client{BaseURL: srv.URL, HTTP: srv.Client()}, LoginURL: srv.URL, Username: "user", Password: "password", MFAStatePath: path}
 	if _, err := o.StartMFA(context.Background()); err == nil {
 		t.Fatal("fresh MFA start unexpectedly succeeded")
 	}
