@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -157,6 +158,48 @@ func TestOpowerPersistsPendingMFAChallenge(t *testing.T) {
 	info, err := os.Stat(path)
 	if err != nil || info.Mode().Perm() != 0600 {
 		t.Fatalf("state protection err=%v mode=%v", err, info.Mode())
+	}
+}
+
+func TestOpowerStartMFAAfterVerificationCreatesFreshChallenge(t *testing.T) {
+	var loginCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		form, _ := url.ParseQuery(string(body))
+		var msg map[string]any
+		_ = json.Unmarshal([]byte(form.Get("message")), &msg)
+		action := msg["actions"].([]any)[0].(map[string]any)
+		method := action["params"].(map[string]any)["method"]
+		w.Header().Set("Content-Type", "application/json")
+		switch method {
+		case "login":
+			loginCalls++
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"actions":[{"state":"SUCCESS","returnValue":{"returnValue":{"retMessage":"verifymfa :","retencrUsrname":"challenge-%d","encryptedTFT":"token-%d","EmailVal":"challenge-%d@example.com"}}}]}`, loginCalls, loginCalls, loginCalls)))
+		case "handleChoiceofMFA":
+			_, _ = w.Write([]byte(`{"actions":[{"state":"SUCCESS"}]}`))
+		case "verifySignInCode":
+			_, _ = w.Write([]byte(`{"actions":[{"state":"SUCCESS","returnValue":{"returnValue":{"returnResponse":"success","wrapperObj":{"retencrUsrname":"browser-state","encryptedKey":"validation-state","expiryDateTime":"tomorrow"}}}}]}`))
+		default:
+			t.Fatalf("unexpected MFA method %q", method)
+		}
+	}))
+	defer srv.Close()
+	o := &Opower{Client: Client{BaseURL: srv.URL, HTTP: srv.Client()}, LoginURL: srv.URL, Username: "user", Password: "password", MFAStatePath: t.TempDir() + "/pge-mfa.json"}
+	if _, err := o.StartMFA(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.SelectMFA(context.Background(), "Email"); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.VerifyMFA(context.Background(), "123456"); err != nil {
+		t.Fatal(err)
+	}
+	options, err := o.StartMFA(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loginCalls != 2 || len(options) != 1 || options[0].Value != "Email" || o.LoginData["retencrUsrname"] != "challenge-2" {
+		t.Fatalf("expected a fresh second challenge, loginCalls=%d options=%+v state=%#v", loginCalls, options, o.LoginData)
 	}
 }
 
