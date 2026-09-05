@@ -82,6 +82,46 @@ func TestOpowerPGESessionAccountsAndIntervals(t *testing.T) {
 	}
 }
 
+func TestOpowerPublicAuthenticationMethodsWaitForSetupLock(t *testing.T) {
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/ei/edge/apis/multi-account-v1/cws/pge/customers":
+			_, _ = w.Write([]byte(`{"customers":[]}`))
+		case "/ei/edge/apis/DataBrowser-v1/cws/utilities/pge/utilityAccounts/account/reads":
+			_, _ = w.Write([]byte(`{"reads":[]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	o := &Opower{Client: Client{BaseURL: srv.URL, HTTP: srv.Client(), Credentials: "token"}, LoginURL: srv.URL}
+	o.mfaMu.Lock()
+	accountsDone := make(chan error, 1)
+	intervalsDone := make(chan error, 1)
+	go func() { _, err := o.Accounts(context.Background()); accountsDone <- err }()
+	go func() { _, err := o.Intervals(context.Background(), "account"); intervalsDone <- err }()
+	select {
+	case err := <-accountsDone:
+		t.Fatalf("Accounts bypassed setup lock: %v", err)
+	case err := <-intervalsDone:
+		t.Fatalf("Intervals bypassed setup lock: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if requests != 0 {
+		t.Fatalf("authentication requests bypassed setup lock: %d", requests)
+	}
+	o.mfaMu.Unlock()
+	if err := <-accountsDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-intervalsDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestOpowerStartMFAReturnsOptionsFromLoginChallenge(t *testing.T) {
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

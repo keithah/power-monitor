@@ -862,6 +862,12 @@ func (o *Opower) text(ctx context.Context, raw string, out *string) error {
 }
 func (o *Opower) utilityCode() string { return "pge" }
 func (o *Opower) Accounts(ctx context.Context) ([]OpowerAccount, error) {
+	o.mfaMu.Lock()
+	defer o.mfaMu.Unlock()
+	return o.accounts(ctx)
+}
+
+func (o *Opower) accounts(ctx context.Context) ([]OpowerAccount, error) {
 	var v struct {
 		Customers []struct {
 			UUID            string `json:"uuid"`
@@ -894,6 +900,12 @@ func (o *Opower) Accounts(ctx context.Context) ([]OpowerAccount, error) {
 	return out, nil
 }
 func (o *Opower) Intervals(ctx context.Context, account string) ([]OpowerInterval, error) {
+	o.mfaMu.Lock()
+	defer o.mfaMu.Unlock()
+	return o.intervals(ctx, account)
+}
+
+func (o *Opower) intervals(ctx context.Context, account string) ([]OpowerInterval, error) {
 	now := o.now()
 	u := url.Values{"aggregateType": {"day"}, "startDate": {now.Add(-48 * time.Hour).Format("2006-01-02")}, "endDate": {now.Format("2006-01-02")}}
 	var v struct {
@@ -926,7 +938,7 @@ func (o *Opower) Collect(ctx context.Context, s domain.Setup) ([]domain.Reading,
 			return nil, err
 		}
 	}
-	accounts, e := o.Accounts(ctx)
+	accounts, e := o.accounts(ctx)
 	if e != nil {
 		return nil, e
 	}
@@ -945,7 +957,7 @@ func (o *Opower) Collect(ctx context.Context, s domain.Setup) ([]domain.Reading,
 	}
 	out := []domain.Reading{}
 	for _, account := range selected {
-		iv, e := o.Intervals(ctx, account.UUID)
+		iv, e := o.intervals(ctx, account.UUID)
 		if e != nil {
 			return nil, e
 		}
