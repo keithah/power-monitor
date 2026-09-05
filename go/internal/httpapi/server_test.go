@@ -136,6 +136,19 @@ func (m *cancellationMFASession) VerifyMFA(ctx context.Context, _ string) error 
 	return nil
 }
 
+type blockingHTTPMFASession struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (m *blockingHTTPMFASession) StartMFA(context.Context) ([]client.MFAOption, error) {
+	close(m.entered)
+	<-m.release
+	return []client.MFAOption{{Label: "Email", Value: "Email"}}, nil
+}
+func (m *blockingHTTPMFASession) SelectMFA(context.Context, string) error { return nil }
+func (m *blockingHTTPMFASession) VerifyMFA(context.Context, string) error { return nil }
+
 func TestMFAEndpointsRouteExplicitPGESetupAndRejectAmbiguity(t *testing.T) {
 	north := &recordingMFASession{}
 	south := &recordingMFASession{}
@@ -183,5 +196,33 @@ func TestVerifyMFAUsesRequestContext(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusOK || mfa.verifyErr != context.Canceled {
 		t.Fatalf("verify code=%d context error=%v", w.Code, mfa.verifyErr)
+	}
+}
+
+func TestVerifyMFACancelsWhileWaitingForSetupLock(t *testing.T) {
+	mfa := &blockingHTTPMFASession{entered: make(chan struct{}), release: make(chan struct{})}
+	a := app.New(domain.Config{Setups: []domain.Setup{{Name: "home", Provider: "pge", CredentialEnv: "PGE_HOME"}}}, nil)
+	a.Providers["home"] = &client.Opower{MFA: mfa}
+	h := New(a)
+	startDone := make(chan error, 1)
+	go func() { _, err := a.StartMFA(context.Background(), "home"); startDone <- err }()
+	<-mfa.entered
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := httptest.NewRequest(http.MethodPost, "/api/pge/mfa/verify", bytes.NewBufferString(`{"code":"123456"}`)).WithContext(ctx)
+	w := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() { h.ServeHTTP(w, r); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("verify did not honor cancellation while waiting for the setup lock")
+	}
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("verify code=%d body=%s", w.Code, w.Body.String())
+	}
+	close(mfa.release)
+	if err := <-startDone; err != nil {
+		t.Fatal(err)
 	}
 }

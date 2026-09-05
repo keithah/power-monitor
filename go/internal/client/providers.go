@@ -552,8 +552,23 @@ func mfaDeliveryOptions(values map[string]string) []MFAOption {
 	return options
 }
 
+func (o *Opower) lockMFA(ctx context.Context) error {
+	for {
+		if o.mfaMu.TryLock() {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
 func (o *Opower) StartMFA(ctx context.Context) ([]MFAOption, error) {
-	o.mfaMu.Lock()
+	if err := o.lockMFA(ctx); err != nil {
+		return nil, err
+	}
 	defer o.mfaMu.Unlock()
 	if o.MFA != nil {
 		return o.MFA.StartMFA(ctx)
@@ -587,7 +602,9 @@ func canonicalMFAOption(option string) string {
 }
 func validMFAOption(option string) bool { return canonicalMFAOption(option) != "" }
 func (o *Opower) SelectMFA(ctx context.Context, option string) error {
-	o.mfaMu.Lock()
+	if err := o.lockMFA(ctx); err != nil {
+		return err
+	}
 	defer o.mfaMu.Unlock()
 	if !validMFAOption(option) {
 		return perr(ErrMFARequired, errors.New("MFA option must be Email or Phone"))
@@ -622,7 +639,9 @@ func (o *Opower) SelectMFA(ctx context.Context, option string) error {
 	return o.persistMFAChallenge()
 }
 func (o *Opower) VerifyMFA(ctx context.Context, code string) error {
-	o.mfaMu.Lock()
+	if err := o.lockMFA(ctx); err != nil {
+		return err
+	}
 	defer o.mfaMu.Unlock()
 	if o.MFA != nil {
 		return o.MFA.VerifyMFA(ctx, code)
@@ -742,7 +761,9 @@ func (o *Opower) loadMFAState() error {
 	return nil
 }
 func (o *Opower) Login(ctx context.Context) error {
-	o.mfaMu.Lock()
+	if err := o.lockMFA(ctx); err != nil {
+		return err
+	}
 	defer o.mfaMu.Unlock()
 	return o.login(ctx)
 }
@@ -862,7 +883,9 @@ func (o *Opower) text(ctx context.Context, raw string, out *string) error {
 }
 func (o *Opower) utilityCode() string { return "pge" }
 func (o *Opower) Accounts(ctx context.Context) ([]OpowerAccount, error) {
-	o.mfaMu.Lock()
+	if err := o.lockMFA(ctx); err != nil {
+		return nil, err
+	}
 	defer o.mfaMu.Unlock()
 	return o.accounts(ctx)
 }
@@ -900,7 +923,9 @@ func (o *Opower) accounts(ctx context.Context) ([]OpowerAccount, error) {
 	return out, nil
 }
 func (o *Opower) Intervals(ctx context.Context, account string) ([]OpowerInterval, error) {
-	o.mfaMu.Lock()
+	if err := o.lockMFA(ctx); err != nil {
+		return nil, err
+	}
 	defer o.mfaMu.Unlock()
 	return o.intervals(ctx, account)
 }
@@ -928,7 +953,9 @@ func (o *Opower) intervals(ctx context.Context, account string) ([]OpowerInterva
 	return out, nil
 }
 func (o *Opower) Collect(ctx context.Context, s domain.Setup) ([]domain.Reading, error) {
-	o.mfaMu.Lock()
+	if err := o.lockMFA(ctx); err != nil {
+		return nil, err
+	}
 	defer o.mfaMu.Unlock()
 	if o.Credentials == "" {
 		_ = o.loadMFAState()
