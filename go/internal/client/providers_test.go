@@ -144,6 +144,29 @@ func TestConfiguredUsesProviderSpecificLegacyCredentials(t *testing.T) {
 	}
 }
 
+func TestDefaultMFAStatePathUsesUserConfigurationDirectory(t *testing.T) {
+	path := defaultMFAStatePath()
+	if path == "/data/pge-login.json" || filepath.Base(path) != "pge-login.json" || filepath.Base(filepath.Dir(path)) != "power-monitor" {
+		t.Fatalf("unexpected default MFA state path %q", path)
+	}
+}
+
+func TestMFAStateDirectoryIsCreatedForNestedConfiguredPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "state", "pge-login.json")
+	o := &Opower{MFAStatePath: path}
+	if err := o.lockMFA(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	o.unlockMFA()
+	if err := writeMFAState(path, []byte("state")); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Dir(path))
+	if err != nil || info.Mode().Perm()&0077 != 0 {
+		t.Fatalf("state directory err=%v mode=%o", err, info.Mode().Perm())
+	}
+}
+
 func TestConfiguredScopesPGEMFAStateBySetup(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("POWER_MONITOR_PGE_LOGIN_PATH", filepath.Join(dir, "pge-login.json"))

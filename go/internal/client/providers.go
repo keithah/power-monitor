@@ -486,6 +486,17 @@ func (o *Opower) aura(ctx context.Context, body map[string]any, out any) error {
 	return o.doForm(ctx, o.loginBase()+"/myaccount/s/sfsites/aura?aura.ApexAction.execute=1", form, out)
 }
 func jsonString(v any) string { b, _ := json.Marshal(v); return string(b) }
+func defaultMFAStatePath() string {
+	if dir, err := os.UserConfigDir(); err == nil {
+		return filepath.Join(dir, "power-monitor", "pge-login.json")
+	}
+	return filepath.Join(os.TempDir(), "power-monitor", "pge-login.json")
+}
+
+func ensureMFAStateDir(path string) error {
+	return os.MkdirAll(filepath.Dir(path), 0700)
+}
+
 func (o *Opower) mfaPath() string {
 	if o.MFAStatePath != "" {
 		return o.MFAStatePath
@@ -493,7 +504,7 @@ func (o *Opower) mfaPath() string {
 	if p := os.Getenv("POWER_MONITOR_PGE_LOGIN_PATH"); p != "" {
 		return p
 	}
-	return "/data/pge-login.json"
+	return defaultMFAStatePath()
 }
 
 // scopedMFAStatePath prevents one named PG&E/Opower setup from overwriting
@@ -502,7 +513,7 @@ func (o *Opower) mfaPath() string {
 func scopedMFAStatePath(setup string) string {
 	base := os.Getenv("POWER_MONITOR_PGE_LOGIN_PATH")
 	if base == "" {
-		base = "/data/pge-login.json"
+		base = defaultMFAStatePath()
 	}
 	name := filenameSegment(setup)
 	ext := filepath.Ext(base)
@@ -563,6 +574,10 @@ func (o *Opower) lockMFA(ctx context.Context) error {
 	}
 	if o.MFA != nil || (o.MFAStatePath == "" && os.Getenv("POWER_MONITOR_PGE_LOGIN_PATH") == "") {
 		return nil
+	}
+	if err := ensureMFAStateDir(o.mfaPath()); err != nil {
+		o.mfaMu.Unlock()
+		return perr(ErrUnavailable, err)
 	}
 	lock, err := lockMFAState(ctx, o.mfaPath()+".lock")
 	if err != nil {
@@ -761,6 +776,9 @@ func (o *Opower) VerifyMFA(ctx context.Context, code string) error {
 	return nil
 }
 func writeMFAState(path string, data []byte) error {
+	if err := ensureMFAStateDir(path); err != nil {
+		return err
+	}
 	dir := filepath.Dir(path)
 	file, err := os.CreateTemp(dir, ".pge-mfa-*")
 	if err != nil {
