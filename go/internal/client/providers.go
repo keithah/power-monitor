@@ -565,6 +565,16 @@ func (o *Opower) lockMFA(ctx context.Context) error {
 	}
 }
 
+func (o *Opower) clearMFAChallenge() {
+	o.mfaReady = false
+	if o.LoginData == nil {
+		return
+	}
+	for _, key := range []string{"retencrUsrname", "encryptedTFT", "Email", "Phone", "selectedChoice"} {
+		delete(o.LoginData, key)
+	}
+}
+
 func (o *Opower) StartMFA(ctx context.Context) ([]MFAOption, error) {
 	if err := o.lockMFA(ctx); err != nil {
 		return nil, err
@@ -573,7 +583,10 @@ func (o *Opower) StartMFA(ctx context.Context) ([]MFAOption, error) {
 	if o.MFA != nil {
 		return o.MFA.StartMFA(ctx)
 	}
-	if !o.mfaReady && o.LoginData["retencrUsrname"] == "" && o.Username != "" {
+	if o.mfaReady || (o.LoginData != nil && o.LoginData["retencrUsrname"] != "") {
+		o.clearMFAChallenge()
+	}
+	if o.Username != "" {
 		if err := o.login(ctx); err != nil {
 			var pe *ProviderError
 			if !errors.As(err, &pe) || pe.Class != ErrMFARequired {
@@ -708,7 +721,11 @@ func (o *Opower) VerifyMFA(ctx context.Context, code string) error {
 		o.LoginData = map[string]string{}
 	}
 	o.LoginData["browsercookie"], o.LoginData["validationCookie"], o.LoginData["expiryDateTime"] = rv.WrapperObj.RetencrUsrname, rv.WrapperObj.EncryptedKey, rv.WrapperObj.ExpiryDateTime
-	return o.persistMFAState()
+	if err := o.persistMFAState(); err != nil {
+		return err
+	}
+	o.clearMFAChallenge()
+	return nil
 }
 func (o *Opower) persistMFAChallenge() error {
 	if o.LoginData == nil || o.LoginData["retencrUsrname"] == "" || o.LoginData["encryptedTFT"] == "" {

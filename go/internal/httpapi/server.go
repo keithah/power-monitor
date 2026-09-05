@@ -222,6 +222,14 @@ func (s Server) startMFA(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, http.StatusOK, map[string]any{"status": "mfa_required", "options": options})
 }
+func mfaErrorStatus(err error) int {
+	var providerErr *client.ProviderError
+	if errors.As(err, &providerErr) && providerErr.Class == client.ErrMFARequired {
+		return http.StatusConflict
+	}
+	return http.StatusBadGateway
+}
+
 func (s Server) selectMFA(w http.ResponseWriter, r *http.Request) {
 	name, configured, err := s.pgeSetup(r)
 	if err != nil {
@@ -241,7 +249,7 @@ func (s Server) selectMFA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.App.SelectMFA(r.Context(), name, in.Option); err != nil {
-		write(w, http.StatusConflict, map[string]any{"status": "error", "error": err.Error()})
+		write(w, mfaErrorStatus(err), map[string]any{"status": "error", "error": err.Error()})
 		return
 	}
 	write(w, http.StatusOK, map[string]any{"status": "code_sent", "option": in.Option})
@@ -265,12 +273,7 @@ func (s Server) verifyMFA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.App.VerifyMFA(r.Context(), name, in.Code); err != nil {
-		var providerErr *client.ProviderError
-		if errors.As(err, &providerErr) && providerErr.Class == client.ErrMFARequired {
-			write(w, http.StatusConflict, map[string]any{"status": "error", "error": err.Error()})
-			return
-		}
-		write(w, http.StatusBadGateway, map[string]any{"status": "error", "error": err.Error()})
+		write(w, mfaErrorStatus(err), map[string]any{"status": "error", "error": err.Error()})
 		return
 	}
 	write(w, http.StatusOK, map[string]any{"status": "ok", "message": "PG&E MFA verified and login session saved"})

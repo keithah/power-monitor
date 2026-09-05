@@ -206,6 +206,11 @@ func TestOpowerSelectVerifyMFAExactShapeAndProtectedState(t *testing.T) {
 	if strings.Contains(string(data), "123456") {
 		t.Fatal("MFA code persisted")
 	}
+	for _, key := range []string{"retencrUsrname", "encryptedTFT", "Email", "Phone", "selectedChoice"} {
+		if o.LoginData[key] != "" {
+			t.Fatalf("completed MFA retained stale pending state %q=%q", key, o.LoginData[key])
+		}
+	}
 }
 
 func TestOpowerCollectResumesPersistedSession(t *testing.T) {

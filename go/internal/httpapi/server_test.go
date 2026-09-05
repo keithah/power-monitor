@@ -137,6 +137,14 @@ func (m *cancellationMFASession) VerifyMFA(ctx context.Context, _ string) error 
 	return nil
 }
 
+type selectFailureMFASession struct{ err error }
+
+func (m selectFailureMFASession) StartMFA(context.Context) ([]client.MFAOption, error) {
+	return nil, nil
+}
+func (m selectFailureMFASession) SelectMFA(context.Context, string) error { return m.err }
+func (m selectFailureMFASession) VerifyMFA(context.Context, string) error { return nil }
+
 type preconditionMFASession struct{}
 
 func (preconditionMFASession) StartMFA(context.Context) ([]client.MFAOption, error) { return nil, nil }
@@ -190,6 +198,18 @@ func TestMFAEndpointsRouteExplicitPGESetupAndRejectAmbiguity(t *testing.T) {
 	}
 	if south.starts != 1 || len(south.selects) != 1 || len(south.verifies) != 1 {
 		t.Fatalf("south setup did not receive all MFA calls: %+v", south)
+	}
+}
+
+func TestSelectMFAReportsUpstreamFailuresAsBadGateway(t *testing.T) {
+	a := app.New(domain.Config{Setups: []domain.Setup{{Name: "home", Provider: "pge", CredentialEnv: "PGE_HOME"}}}, nil)
+	a.Providers["home"] = &client.Opower{MFA: selectFailureMFASession{err: &client.ProviderError{Class: client.ErrUnavailable, Err: errors.New("network unavailable")}}}
+	h := New(a)
+	r := httptest.NewRequest(http.MethodPost, "/api/pge/mfa/select", bytes.NewBufferString(`{"option":"Email"}`))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("select code=%d body=%s", w.Code, w.Body.String())
 	}
 }
 
