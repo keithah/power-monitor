@@ -268,7 +268,8 @@ func (s Server) verifyMFA(w http.ResponseWriter, r *http.Request) {
 		Code string `json:"code"`
 	}
 	json.NewDecoder(r.Body).Decode(&in)
-	if strings.TrimSpace(in.Code) == "" || len(in.Code) > 32 {
+	code := strings.TrimSpace(in.Code)
+	if len(code) < 4 || len(code) > 8 || strings.Trim(code, "0123456789") != "" {
 		write(w, http.StatusBadRequest, map[string]any{"status": "error", "error": "A valid MFA code is required"})
 		return
 	}

@@ -225,6 +225,20 @@ func TestVerifyMFARejectsConfiguredUnselectedChallenge(t *testing.T) {
 	}
 }
 
+func TestVerifyMFARejectsMalformedCodes(t *testing.T) {
+	a := app.New(domain.Config{Setups: []domain.Setup{{Name: "home", Provider: "pge", CredentialEnv: "PGE_HOME"}}}, nil)
+	a.Providers["home"] = &client.Opower{MFA: &recordingMFASession{}}
+	h := New(a)
+	for _, code := range []string{"", "123", "abcde", "123456789", "12 34"} {
+		r := httptest.NewRequest(http.MethodPost, "/api/pge/mfa/verify", bytes.NewBufferString(`{"code":"`+code+`"}`))
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("code %q: got %d body=%s", code, w.Code, w.Body.String())
+		}
+	}
+}
+
 func TestVerifyMFAUsesRequestContext(t *testing.T) {
 	mfa := &cancellationMFASession{}
 	a := app.New(domain.Config{Setups: []domain.Setup{{Name: "home", Provider: "pge", CredentialEnv: "PGE_HOME"}}}, nil)

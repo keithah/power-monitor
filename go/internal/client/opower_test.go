@@ -163,6 +163,8 @@ func TestOpowerPersistsPendingMFAChallenge(t *testing.T) {
 
 func TestOpowerStartMFAAfterVerificationCreatesFreshChallenge(t *testing.T) {
 	var loginCalls int
+	var loginSessionFields []map[string]any
+	var loginCookies []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		form, _ := url.ParseQuery(string(body))
@@ -174,17 +176,25 @@ func TestOpowerStartMFAAfterVerificationCreatesFreshChallenge(t *testing.T) {
 		switch method {
 		case "login":
 			loginCalls++
+			loginParams := action["params"].(map[string]any)["params"].(map[string]any)
+			loginSessionFields = append(loginSessionFields, map[string]any{"browsercookie": loginParams["browsercookie"], "validationCookie": loginParams["validationCookie"]})
+			loginCookies = append(loginCookies, r.Header.Get("Cookie"))
 			_, _ = w.Write([]byte(fmt.Sprintf(`{"actions":[{"state":"SUCCESS","returnValue":{"returnValue":{"retMessage":"verifymfa :","retencrUsrname":"challenge-%d","encryptedTFT":"token-%d","EmailVal":"challenge-%d@example.com"}}}]}`, loginCalls, loginCalls, loginCalls)))
 		case "handleChoiceofMFA":
 			_, _ = w.Write([]byte(`{"actions":[{"state":"SUCCESS"}]}`))
 		case "verifySignInCode":
+			http.SetCookie(w, &http.Cookie{Name: "authenticated", Value: "1", Path: "/"})
 			_, _ = w.Write([]byte(`{"actions":[{"state":"SUCCESS","returnValue":{"returnValue":{"returnResponse":"success","wrapperObj":{"retencrUsrname":"browser-state","encryptedKey":"validation-state","expiryDateTime":"tomorrow"}}}}]}`))
 		default:
 			t.Fatalf("unexpected MFA method %q", method)
 		}
 	}))
 	defer srv.Close()
-	o := &Opower{Client: Client{BaseURL: srv.URL, HTTP: srv.Client()}, LoginURL: srv.URL, Username: "user", Password: "password", MFAStatePath: t.TempDir() + "/pge-mfa.json"}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := &Opower{Client: Client{BaseURL: srv.URL, HTTP: &http.Client{Jar: jar}}, LoginURL: srv.URL, Username: "user", Password: "password", MFAStatePath: t.TempDir() + "/pge-mfa.json"}
 	if _, err := o.StartMFA(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -200,6 +210,9 @@ func TestOpowerStartMFAAfterVerificationCreatesFreshChallenge(t *testing.T) {
 	}
 	if loginCalls != 2 || len(options) != 1 || options[0].Value != "Email" || o.LoginData["retencrUsrname"] != "challenge-2" {
 		t.Fatalf("expected a fresh second challenge, loginCalls=%d options=%+v state=%#v", loginCalls, options, o.LoginData)
+	}
+	if len(loginSessionFields) != 2 || loginSessionFields[1]["browsercookie"] != "null" || loginSessionFields[1]["validationCookie"] != "null" || loginCookies[1] != "" {
+		t.Fatalf("second MFA login retained completed session: fields=%#v cookies=%#v", loginSessionFields, loginCookies)
 	}
 }
 
