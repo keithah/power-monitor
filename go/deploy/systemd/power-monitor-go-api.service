@@ -1,0 +1,16 @@
+[Unit]
+Description=Staged Go Power Monitor REST compatibility API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/power-monitor-go
+ExecStart=/usr/bin/python3 %h/power-monitor-go/launch-api.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

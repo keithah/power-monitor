@@ -1,0 +1,43 @@
+{
+  "manifest_version": "0.3",
+  "name": "power-monitor-pp-mcp",
+  "display_name": "Power Monitor",
+  "version": "1.0.0",
+  "description": "PG&E/Opower, Enphase, Emporia electricity monitoring",
+  "author": {
+    "name": "CLI Printing Press"
+  },
+  "license": "Apache-2.0",
+  "server": {
+    "type": "binary",
+    "entry_point": "bin/power-monitor-pp-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/bin/power-monitor-pp-mcp",
+      "args": [],
+      "env": {
+        "POWER_MONITOR_BASE_URL": "${user_config.power_monitor_base_url}",
+        "POWER_MONITOR_SKIP_TLS_VERIFY": "${user_config.power_monitor_skip_tls_verify}"
+      }
+    }
+  },
+  "user_config": {
+    "power_monitor_base_url": {
+      "type": "string",
+      "title": "POWER_MONITOR_BASE_URL",
+      "description": "Optional. Sets POWER_MONITOR_BASE_URL for the Power Monitor MCP server. Per-instance, non-secret setting; not a credential."
+    },
+    "power_monitor_skip_tls_verify": {
+      "type": "string",
+      "title": "POWER_MONITOR_SKIP_TLS_VERIFY",
+      "description": "Optional. Sets POWER_MONITOR_SKIP_TLS_VERIFY for the Power Monitor MCP server. Per-instance, non-secret setting; not a credential."
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=1.0.0",
+    "platforms": [
+      "darwin",
+      "linux",
+      "win32"
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "api_name": "power-monitor",
+  "base_url": "http://127.0.0.1:8097",
+  "description": "PG\u0026E/Opower, Enphase, Emporia electricity monitoring",
+  "mcp_ready": "full",
+  "http_transport": "browser-chrome-h2",
+  "auth": {
+    "type": "none"
+  },
+  "required_headers": [],
+  "tools": [
+    {
+      "name": "collect_collect",
+      "description": "Collect.",
+      "description_source": "generated",
+      "method": "POST",
+      "path": "/api/collect",
+      "no_auth": true,
+      "params": []
+    },
+    {
+      "name": "status_status",
+      "description": "Status. Returns the StatusStatusResponse.",
+      "description_source": "generated",
+      "method": "GET",
+      "path": "/api/status",
+      "no_auth": true,
+      "params": []
+    }
+  ]
+}

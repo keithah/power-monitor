@@ -1,0 +1,20 @@
+{
+  "schema_version": 2,
+  "id": "reviewed-pge-state-isolation-and-errors",
+  "applied_at": "2026-09-03",
+  "base_run_id": "20260901-031653",
+  "base_printing_press_version": "4.31.3",
+  "summary": "Scope PG&E persisted MFA/session state and in-memory HTTP sessions to the named setup, use a per-user default state directory, serialize each setup's mutable authentication state across processes with cancellation-aware cross-platform acquisition, atomically and durably persist session transitions, enforce durable terminal cleanup and fresh post-verification authentication, preserve account-discovery error classes, and honor REST request cancellation.",
+  "reason": "Deep review found that multiple named PG&E/Opower setups shared a persisted state file and the global HTTP cookie jar; the implicit /data state directory was unavailable in normal CLI/MCP installs; concurrent MFA, login, collection, account discovery, and interval reads could interleave mutable setup state; lock waits could outlive a canceled REST verification request; state writes could be observed partially by a separately-run collector or revert after a crash; verification could silently choose Email before a delivery selection; completed MFA retained pending challenge state or could reuse completed browser/cookie session state on a later StartMFA; a failed fresh start could leave its completed state file to be resurrected by collection; account discovery replaced authentication and transport errors with an empty-account error; and REST verification detached upstream work from request cancellation.",
+  "files": [
+    "internal/client/providers.go",
+    "internal/client/mfa_state_unix.go",
+    "internal/client/mfa_state_windows.go",
+    "internal/client/providers_test.go",
+    "internal/client/opower_test.go",
+    "internal/httpapi/server.go",
+    "internal/httpapi/server_test.go",
+    "README.md"
+  ],
+  "validated_outcome": "Two named PG&E setups use independent persisted state and HTTP cookie jars; configured CLI/MCP/API instances default state under the per-user configuration directory and create its private parent directory as needed; all public and internal login, collection, account-discovery, interval, and MFA transitions serialize across processes per setup with cancellation-aware cross-platform advisory locks; state updates use private temp files and atomic replacement, with file and parent-directory sync on the Unix deployment targets; verification requires an explicit selected delivery method; a subsequent StartMFA drops all completed web-session fields and cookies and durably deletes completed persisted state on Unix before creating a fresh challenge; cancellation reaches REST verification; and account-discovery authentication failures remain classified for callers."
+}

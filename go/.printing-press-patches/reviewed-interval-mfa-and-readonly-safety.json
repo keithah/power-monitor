@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "id": "reviewed-interval-mfa-and-readonly-safety",
+  "applied_at": "2026-09-03",
+  "base_run_id": "20260901-031653",
+  "base_printing_press_version": "4.31.3",
+  "summary": "Harden staged provider reporting, MFA continuation, storage migrations, and MCP read-only behavior.",
+  "reason": "Live PG&E validation showed MFA delivery options are returned by the login challenge and the CLI executes MFA phases in separate processes. Review also identified incomplete-hour persistence, mutable MCP exposure, migration loss, and error-propagation risks.",
+  "files": [
+    "cmd/power-monitor-pp-mcp/main.go",
+    "internal/app/app.go",
+    "internal/cli/root.go",
+    "internal/cli/root_test.go",
+    "internal/client/providers.go",
+    "internal/client/opower_test.go",
+    "internal/client/providers_test.go",
+    "internal/mcp/server.go",
+    "internal/mcp/server_test.go",
+    "internal/store/store.go",
+    "internal/store/store_test.go",
+    "spec.yaml",
+    ".goreleaser.yaml",
+    ".printing-press.json",
+    "Makefile"
+  ],
+  "validated_outcome": "Focused regressions, full Go tests/vet/build, live Go PG&E email MFA plus session-backed collection, and read-only MCP verification pass."
+}

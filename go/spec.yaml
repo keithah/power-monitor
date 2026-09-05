@@ -1,0 +1,38 @@
+openapi: 3.0.3
+info:
+  title: Power Monitor
+  version: 1.0.0
+  description: Staged, loopback-only REST compatibility API for Power Monitor.
+servers:
+  - url: http://127.0.0.1:8097
+    description: local staged power-monitor compatibility service
+paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        "200":
+          description: service is healthy
+  /api/status:
+    get:
+      operationId: status
+      responses:
+        "200":
+          description: configured service and provider status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, service, providers]
+                properties:
+                  version: {type: integer, example: 1}
+                  service: {type: string, example: power-monitor}
+                  providers:
+                    type: object
+                    additionalProperties: {type: boolean}
+  /api/collect:
+    post:
+      operationId: collect
+      responses:
+        "200":
+          description: provider collection result

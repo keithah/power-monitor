@@ -1,0 +1,9 @@
+[Unit]
+Description=Collect staged Power Monitor provider readings
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/power-monitor-go
+ExecStart=/usr/bin/python3 %h/power-monitor-go/launch-collect.py
+UMask=0077

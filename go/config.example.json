@@ -1,0 +1,8 @@
+{
+  "setups": [
+    {"name":"house-solar","provider":"enphase","site_id":"SITE_ID_PLACEHOLDER","credential_env":"ENPHASE_CREDENTIALS","role":"generation"},
+    {"name":"main-panel","provider":"emporia","device_gid":"DEVICE_GID_PLACEHOLDER","credential_env":"EMPORIA_CREDENTIALS","role":"mains"},
+    {"name":"pge-home","provider":"opower","account_id":"ACCOUNT_ID_PLACEHOLDER","credential_env":"PGE_CREDENTIALS","role":"utility"}
+  ],
+  "rollups": []
+}

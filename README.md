@@ -25,6 +25,34 @@ Opower   → utility import/export
 
 MCP is a bad primary interface here: collection is long-running, PG&E MFA is interactive, and agents should query stored readings rather than log into utilities. Keep credentials on the collector host.
 
+## Go rewrite (review / staging)
+
+The generated Go replacement is tracked in [`go/`](go/). It provides the same
+provider-oriented collector model, a shared CLI and native Streamable HTTP MCP,
+explicit multi-setup rollups, and interval-safe summaries. It remains staged:
+the Python service above is the active production collector until Go provider
+acceptance—including the standalone PG&E MFA-start flow—has completed.
+
+### REST compatibility staging
+
+`power-monitor-pp-api` provides the existing `/health` and `/api/*` REST surface
+on a separate loopback address (`127.0.0.1:8097` by default). It is intentionally
+not exposed on port 8094 and does not replace the Python container. The staging
+unit is [`go/deploy/systemd/power-monitor-go-api.service`](go/deploy/systemd/power-monitor-go-api.service).
+
+Before any cutover, run it beside Python and compare status, devices, readings,
+reports, collection outcomes, and a session renewal after PG&E MFA. The Go
+collector's schedule must be deliberately aligned with Python's 900-second
+interval; the current hourly timer is not a production-equivalence claim.
+
+Run its independent checks from `go/`:
+
+```bash
+go test ./...
+go vet ./...
+go build ./...
+```
+
 ## Providers
 
 - **Enphase** — Enlighten username/password. Discovers sites and stores daily production. Optional LAN Envoy scan if cloud listing is empty.

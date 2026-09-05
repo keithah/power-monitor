@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "id": "reviewed-rest-mfa-setup-selection",
+  "applied_at": "2026-09-04",
+  "base_run_id": "20260901-031653",
+  "base_printing_press_version": "4.31.3",
+  "summary": "Route staged REST PG&E MFA actions to an explicit named setup, reject ambiguous multi-setup requests, and strictly validate/classify MFA input and provider failures correctly.",
+  "reason": "The REST compatibility handlers selected the first PG&E/Opower setup for every MFA action, which could apply a request to the wrong configured account after provider-state isolation was added; configured but unstarted/unselected MFA verification was incorrectly reported as an upstream 502 failure; selection reported all provider failures as client conflicts; malformed MFA codes reached the provider and were misreported as conflicts instead of request-validation failures; and trailing or concatenated JSON was accepted after a valid MFA request object.",
+  "files": [
+    "internal/httpapi/server.go",
+    "internal/httpapi/server_test.go",
+    "README.md"
+  ],
+  "validated_outcome": "REST MFA start, selection, and verification use the requested PG&E/Opower setup; multi-setup requests without a selector fail closed while the single-setup compatibility path remains available; malformed codes and malformed/trailing JSON are rejected with HTTP 400; MFA transition preconditions return HTTP 409; and non-precondition provider failures return HTTP 502."
+}
