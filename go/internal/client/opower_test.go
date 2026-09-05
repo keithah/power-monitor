@@ -236,6 +236,25 @@ func TestOpowerCollectResumesPersistedSession(t *testing.T) {
 	}
 }
 
+func TestOpowerVerifyMFARequiresSelectedDeliveryMethod(t *testing.T) {
+	dir := t.TempDir()
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	o := &Opower{Client: Client{BaseURL: srv.URL, HTTP: srv.Client()}, LoginURL: srv.URL, Username: "user", Password: "password", MFAStatePath: dir + "/challenge.json", LoginData: map[string]string{"encryptedTFT": "opaque-token", "retencrUsrname": "opaque-user"}}
+	err := o.VerifyMFA(context.Background(), "123456")
+	var pe *ProviderError
+	if !errors.As(err, &pe) || pe.Class != ErrMFARequired {
+		t.Fatalf("error=%T %v", err, err)
+	}
+	if requests != 0 {
+		t.Fatalf("verify must not call the provider before MFA delivery selection, requests=%d", requests)
+	}
+}
+
 func TestOpowerMFARejectsInvalidInputsAndMissingSession(t *testing.T) {
 	o := &Opower{}
 	if err := o.SelectMFA(context.Background(), "totp"); err == nil {

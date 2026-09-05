@@ -651,6 +651,9 @@ func (o *Opower) VerifyMFA(ctx context.Context, code string) error {
 			return perr(ErrMFARequired, errors.New("start and select MFA before verifying a code"))
 		}
 	}
+	if canonicalMFAOption(o.LoginData["selectedChoice"]) == "" {
+		return perr(ErrMFARequired, errors.New("select an MFA delivery option before verifying a code"))
+	}
 	code = strings.TrimSpace(code)
 	if len(code) < 4 || len(code) > 8 {
 		return perr(ErrMFARequired, errors.New("MFA code is invalid"))
