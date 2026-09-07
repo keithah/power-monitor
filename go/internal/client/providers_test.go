@@ -147,6 +147,41 @@ func TestEmporiaCollectDiscoversConfiguredDevices(t *testing.T) {
 	}
 }
 
+func TestEmporiaCollectUsesOneClockSnapshotAcrossDevices(t *testing.T) {
+	beforeBoundary := time.Date(2026, time.January, 1, 10, 59, 59, 0, time.UTC)
+	afterBoundary := beforeBoundary.Add(2 * time.Second)
+	var clockCalls int
+	var instants []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/customers/devices":
+			_, _ = w.Write([]byte(`{"devices":[{"device_gid":"one"},{"device_gid":"two"}]}`))
+		case "/v1/customers/devices/usages":
+			instants = append(instants, r.URL.Query().Get("instant"))
+			_, _ = w.Write([]byte(`{"instant":"2026-01-01T09:00:00Z","device_usages":[{"channel_usages":[{"channel_id":"Mains","usage":2}]}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	e := &Emporia{Client: Client{BaseURL: srv.URL, HTTP: srv.Client(), Credentials: "token"}, Now: func() time.Time {
+		clockCalls++
+		if clockCalls == 1 {
+			return beforeBoundary
+		}
+		return afterBoundary
+	}}
+	rs, err := e.Collect(context.Background(), domain.Setup{Name: "panel", Provider: "emporia"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if clockCalls != 1 || strings.Join(instants, ",") != "2026-01-01T09:59:59Z,2026-01-01T09:59:59Z" || len(rs) != 2 {
+		t.Fatalf("clock calls=%d instants=%v readings=%#v", clockCalls, instants, rs)
+	}
+}
+
 func TestEmporiaDiscoveryRequiresUsableDeviceGID(t *testing.T) {
 	for name, devices := range map[string]string{
 		"empty":        `[]`,

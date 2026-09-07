@@ -376,7 +376,11 @@ func (e *Emporia) Devices(ctx context.Context) ([]EmporiaDevice, error) {
 	return devices, nil
 }
 func (e *Emporia) Usages(ctx context.Context, gid any) ([]domain.Reading, error) {
-	now := e.now()
+	return e.usagesAt(ctx, gid, e.now())
+}
+
+func (e *Emporia) usagesAt(ctx context.Context, gid any, now time.Time) ([]domain.Reading, error) {
+	now = now.UTC()
 	instant := now.Truncate(time.Hour).Add(-time.Second)
 	u := url.Values{"device_gids": {fmt.Sprint(gid)}, "instant": {instant.Format(time.RFC3339)}, "scale": {"HOUR"}, "energy_unit": {"KILOWATT_HOURS"}}
 	path := "/v1/customers/devices/usages?" + u.Encode()
@@ -439,6 +443,7 @@ func emporiaDeviceGID(raw json.RawMessage) (string, bool) {
 }
 
 func (e *Emporia) Collect(ctx context.Context, s domain.Setup) ([]domain.Reading, error) {
+	now := e.now()
 	gids := []string{s.DeviceGID}
 	if s.DeviceGID == "" {
 		devices, err := e.Devices(ctx)
@@ -464,7 +469,7 @@ func (e *Emporia) Collect(ctx context.Context, s domain.Setup) ([]domain.Reading
 	}
 	out := []domain.Reading{}
 	for _, gid := range gids {
-		rs, err := e.Usages(ctx, gid)
+		rs, err := e.usagesAt(ctx, gid, now)
 		if err != nil {
 			return nil, err
 		}
