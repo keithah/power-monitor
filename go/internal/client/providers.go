@@ -260,9 +260,18 @@ func splitIDs(s string) []string {
 type Emporia struct {
 	Client
 	Email, Password, CognitoURL, ClientID string
+	Now                                   func() time.Time
 }
+
+func (e *Emporia) now() time.Time {
+	if e.Now != nil {
+		return e.Now().UTC()
+	}
+	return time.Now().UTC()
+}
+
 type EmporiaDevice struct {
-	GID         any              `json:"device_gid"`
+	GID         json.RawMessage  `json:"device_gid"`
 	DeviceID    string           `json:"device_id"`
 	DisplayName string           `json:"display_name"`
 	Model       string           `json:"model"`
@@ -367,7 +376,13 @@ func (e *Emporia) Devices(ctx context.Context) ([]EmporiaDevice, error) {
 	return devices, nil
 }
 func (e *Emporia) Usages(ctx context.Context, gid any) ([]domain.Reading, error) {
-	u := url.Values{"device_gids": {fmt.Sprint(gid)}, "instant": {time.Now().UTC().Format(time.RFC3339)}, "scale": {"HOUR"}, "energy_unit": {"KILOWATT_HOURS"}}
+	return e.usagesAt(ctx, gid, e.now())
+}
+
+func (e *Emporia) usagesAt(ctx context.Context, gid any, now time.Time) ([]domain.Reading, error) {
+	now = now.UTC()
+	instant := now.Truncate(time.Hour).Add(-time.Second)
+	u := url.Values{"device_gids": {fmt.Sprint(gid)}, "instant": {instant.Format(time.RFC3339)}, "scale": {"HOUR"}, "energy_unit": {"KILOWATT_HOURS"}}
 	path := "/v1/customers/devices/usages?" + u.Encode()
 	var v struct {
 		Instant      string `json:"instant"`
@@ -381,7 +396,7 @@ func (e *Emporia) Usages(ctx context.Context, gid any) ([]domain.Reading, error)
 	if err := e.withAuth(ctx, func() error { return e.do(ctx, http.MethodGet, path, nil, &v) }); err != nil {
 		return nil, err
 	}
-	ts := time.Now().UTC()
+	ts := now
 	if v.Instant != "" {
 		if x, err := time.Parse(time.RFC3339, v.Instant); err == nil {
 			ts = x.UTC()
@@ -391,7 +406,7 @@ func (e *Emporia) Usages(ctx context.Context, gid any) ([]domain.Reading, error)
 	end := start.Add(time.Hour)
 	// Emporia HOUR readings accumulate until the UTC hour closes. Persisting an
 	// open bucket would label a partial value as final and corrupt summaries.
-	if end.After(time.Now().UTC()) {
+	if end.After(now) {
 		return nil, nil
 	}
 	out := []domain.Reading{}
@@ -409,18 +424,64 @@ func (e *Emporia) Usages(ctx context.Context, gid any) ([]domain.Reading, error)
 	}
 	return out, nil
 }
-func (e *Emporia) Collect(ctx context.Context, s domain.Setup) ([]domain.Reading, error) {
-	rs, err := e.Usages(ctx, s.DeviceGID)
-	if err != nil {
-		return nil, err
+func emporiaDeviceGID(raw json.RawMessage) (string, bool) {
+	var gid string
+	if err := json.Unmarshal(raw, &gid); err == nil {
+		gid = strings.TrimSpace(gid)
+		return gid, gid != ""
 	}
-	for i := range rs {
-		rs[i].Setup = s.Name
-		if s.Role != "" && rs[i].Role == domain.Mains {
-			rs[i].Role = s.Role
+	var number json.Number
+	if err := json.Unmarshal(raw, &number); err != nil || number == "" {
+		return "", false
+	}
+	for _, r := range number {
+		if r < '0' || r > '9' {
+			return "", false
 		}
 	}
-	return rs, nil
+	return string(number), true
+}
+
+func (e *Emporia) Collect(ctx context.Context, s domain.Setup) ([]domain.Reading, error) {
+	now := e.now()
+	gids := []string{s.DeviceGID}
+	if s.DeviceGID == "" {
+		devices, err := e.Devices(ctx)
+		if err != nil {
+			return nil, err
+		}
+		gids = make([]string, 0, len(devices))
+		seen := make(map[string]struct{}, len(devices))
+		for _, device := range devices {
+			gid, ok := emporiaDeviceGID(device.GID)
+			if !ok {
+				continue
+			}
+			if _, duplicate := seen[gid]; duplicate {
+				continue
+			}
+			seen[gid] = struct{}{}
+			gids = append(gids, gid)
+		}
+		if len(gids) == 0 {
+			return nil, perr(ErrUpstream, errors.New("no Emporia devices discovered with a usable device GID"))
+		}
+	}
+	out := []domain.Reading{}
+	for _, gid := range gids {
+		rs, err := e.usagesAt(ctx, gid, now)
+		if err != nil {
+			return nil, err
+		}
+		for i := range rs {
+			rs[i].Setup = s.Name
+			if s.Role != "" && rs[i].Role == domain.Mains {
+				rs[i].Role = s.Role
+			}
+		}
+		out = append(out, rs...)
+	}
+	return out, nil
 }
 
 // Opower implements the PG&E portal login and its Opower DataBrowser API.
