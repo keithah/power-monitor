@@ -433,6 +433,9 @@ func (e *Emporia) Collect(ctx context.Context, s domain.Setup) ([]domain.Reading
 				gids = append(gids, device.GID)
 			}
 		}
+		if len(gids) == 0 {
+			return nil, perr(ErrUpstream, errors.New("no Emporia devices discovered with a device GID"))
+		}
 	}
 	out := []domain.Reading{}
 	for _, gid := range gids {

@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -143,6 +144,31 @@ func TestEmporiaCollectDiscoversConfiguredDevices(t *testing.T) {
 	}
 	if len(rs) != 2 {
 		t.Fatalf("discovered devices must both be collected: %#v", rs)
+	}
+}
+
+func TestEmporiaDiscoveryRequiresUsableDeviceGID(t *testing.T) {
+	for name, devices := range map[string]string{
+		"empty":   `[]`,
+		"missing": `[{}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path != "/v1/customers/devices" {
+					t.Fatalf("unexpected request to %s", r.URL.Path)
+				}
+				_, _ = fmt.Fprintf(w, `{"devices":%s}`, devices)
+			}))
+			defer srv.Close()
+
+			e := &Emporia{Client: Client{BaseURL: srv.URL, HTTP: srv.Client(), Credentials: "token"}}
+			_, err := e.Collect(context.Background(), domain.Setup{Name: "panel", Provider: "emporia"})
+			var providerErr *ProviderError
+			if !errors.As(err, &providerErr) || providerErr.Class != ErrUpstream {
+				t.Fatalf("error=%v, want upstream provider error", err)
+			}
+		})
 	}
 }
 
