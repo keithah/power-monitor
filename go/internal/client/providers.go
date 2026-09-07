@@ -421,17 +421,34 @@ func (e *Emporia) Usages(ctx context.Context, gid any) ([]domain.Reading, error)
 	return out, nil
 }
 func (e *Emporia) Collect(ctx context.Context, s domain.Setup) ([]domain.Reading, error) {
-	rs, err := e.Usages(ctx, s.DeviceGID)
-	if err != nil {
-		return nil, err
-	}
-	for i := range rs {
-		rs[i].Setup = s.Name
-		if s.Role != "" && rs[i].Role == domain.Mains {
-			rs[i].Role = s.Role
+	gids := []any{s.DeviceGID}
+	if s.DeviceGID == "" {
+		devices, err := e.Devices(ctx)
+		if err != nil {
+			return nil, err
+		}
+		gids = make([]any, 0, len(devices))
+		for _, device := range devices {
+			if device.GID != nil && fmt.Sprint(device.GID) != "" {
+				gids = append(gids, device.GID)
+			}
 		}
 	}
-	return rs, nil
+	out := []domain.Reading{}
+	for _, gid := range gids {
+		rs, err := e.Usages(ctx, gid)
+		if err != nil {
+			return nil, err
+		}
+		for i := range rs {
+			rs[i].Setup = s.Name
+			if s.Role != "" && rs[i].Role == domain.Mains {
+				rs[i].Role = s.Role
+			}
+		}
+		out = append(out, rs...)
+	}
+	return out, nil
 }
 
 // Opower implements the PG&E portal login and its Opower DataBrowser API.
