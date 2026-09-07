@@ -149,8 +149,12 @@ func TestEmporiaCollectDiscoversConfiguredDevices(t *testing.T) {
 
 func TestEmporiaDiscoveryRequiresUsableDeviceGID(t *testing.T) {
 	for name, devices := range map[string]string{
-		"empty":   `[]`,
-		"missing": `[{}]`,
+		"empty":        `[]`,
+		"missing":      `[{}]`,
+		"blank string": `[{"device_gid":" "}]`,
+		"object":       `[{"device_gid":{}}]`,
+		"array":        `[{"device_gid":[]}]`,
+		"boolean":      `[{"device_gid":false}]`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -169,6 +173,60 @@ func TestEmporiaDiscoveryRequiresUsableDeviceGID(t *testing.T) {
 				t.Fatalf("error=%v, want upstream provider error", err)
 			}
 		})
+	}
+}
+
+func TestEmporiaDiscoveryDeduplicatesGIDs(t *testing.T) {
+	now := time.Date(2026, time.January, 1, 10, 23, 45, 0, time.UTC)
+	var requested []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/customers/devices":
+			_, _ = w.Write([]byte(`{"devices":[{"device_gid":"one"},{"device_gid":"one"},{"device_gid":2},{"device_gid":2}]}`))
+		case "/v1/customers/devices/usages":
+			requested = append(requested, r.URL.Query().Get("device_gids"))
+			_, _ = w.Write([]byte(`{"instant":"2026-01-01T09:00:00Z","device_usages":[{"channel_usages":[{"channel_id":"Mains","usage":2}]}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	e := &Emporia{Client: Client{BaseURL: srv.URL, HTTP: srv.Client(), Credentials: "token"}, Now: func() time.Time { return now }}
+	rs, err := e.Collect(context.Background(), domain.Setup{Name: "panel", Provider: "emporia"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(requested, ",") != "one,2" || len(rs) != 2 {
+		t.Fatalf("requested=%v readings=%#v", requested, rs)
+	}
+}
+
+func TestEmporiaCollectUsesExplicitDeviceGID(t *testing.T) {
+	now := time.Date(2026, time.January, 1, 10, 23, 45, 0, time.UTC)
+	var requested string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/customers/devices" {
+			t.Fatal("explicit device GID must not invoke discovery")
+		}
+		if r.URL.Path != "/v1/customers/devices/usages" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		requested = r.URL.Query().Get("device_gids")
+		_, _ = w.Write([]byte(`{"instant":"2026-01-01T09:00:00Z","device_usages":[{"channel_usages":[{"channel_id":"Mains","usage":2}]}]}`))
+	}))
+	defer srv.Close()
+
+	e := &Emporia{Client: Client{BaseURL: srv.URL, HTTP: srv.Client(), Credentials: "token"}, Now: func() time.Time { return now }}
+	rs, err := e.Collect(context.Background(), domain.Setup{Name: "panel", Provider: "emporia", DeviceGID: "configured"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requested != "configured" || len(rs) != 1 {
+		t.Fatalf("requested=%q readings=%#v", requested, rs)
 	}
 }
 

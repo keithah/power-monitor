@@ -271,7 +271,7 @@ func (e *Emporia) now() time.Time {
 }
 
 type EmporiaDevice struct {
-	GID         any              `json:"device_gid"`
+	GID         json.RawMessage  `json:"device_gid"`
 	DeviceID    string           `json:"device_id"`
 	DisplayName string           `json:"display_name"`
 	Model       string           `json:"model"`
@@ -420,21 +420,46 @@ func (e *Emporia) Usages(ctx context.Context, gid any) ([]domain.Reading, error)
 	}
 	return out, nil
 }
+func emporiaDeviceGID(raw json.RawMessage) (string, bool) {
+	var gid string
+	if err := json.Unmarshal(raw, &gid); err == nil {
+		gid = strings.TrimSpace(gid)
+		return gid, gid != ""
+	}
+	var number json.Number
+	if err := json.Unmarshal(raw, &number); err != nil || number == "" {
+		return "", false
+	}
+	for _, r := range number {
+		if r < '0' || r > '9' {
+			return "", false
+		}
+	}
+	return string(number), true
+}
+
 func (e *Emporia) Collect(ctx context.Context, s domain.Setup) ([]domain.Reading, error) {
-	gids := []any{s.DeviceGID}
+	gids := []string{s.DeviceGID}
 	if s.DeviceGID == "" {
 		devices, err := e.Devices(ctx)
 		if err != nil {
 			return nil, err
 		}
-		gids = make([]any, 0, len(devices))
+		gids = make([]string, 0, len(devices))
+		seen := make(map[string]struct{}, len(devices))
 		for _, device := range devices {
-			if device.GID != nil && fmt.Sprint(device.GID) != "" {
-				gids = append(gids, device.GID)
+			gid, ok := emporiaDeviceGID(device.GID)
+			if !ok {
+				continue
 			}
+			if _, duplicate := seen[gid]; duplicate {
+				continue
+			}
+			seen[gid] = struct{}{}
+			gids = append(gids, gid)
 		}
 		if len(gids) == 0 {
-			return nil, perr(ErrUpstream, errors.New("no Emporia devices discovered with a device GID"))
+			return nil, perr(ErrUpstream, errors.New("no Emporia devices discovered with a usable device GID"))
 		}
 	}
 	out := []domain.Reading{}
