@@ -117,6 +117,29 @@ func TestEmporiaSkipsCurrentPartialHour(t *testing.T) {
 	}
 }
 
+func TestEmporiaRequestsLastCompletedHour(t *testing.T) {
+	now := time.Date(2026, time.January, 1, 10, 23, 45, 0, time.UTC)
+	wantInstant := "2026-01-01T09:59:59Z"
+	var gotInstant string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotInstant = r.URL.Query().Get("instant")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"instant":"2026-01-01T09:00:00Z","device_usages":[{"channel_usages":[{"channel_id":"Mains","usage":2}]}]}`))
+	}))
+	defer srv.Close()
+	e := &Emporia{Client: Client{BaseURL: srv.URL, HTTP: srv.Client(), Credentials: "token"}, Now: func() time.Time { return now }}
+	rs, err := e.Usages(context.Background(), "42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotInstant != wantInstant {
+		t.Fatalf("instant=%q want %q", gotInstant, wantInstant)
+	}
+	if len(rs) != 1 {
+		t.Fatalf("closed-hour reading must be retained: %#v", rs)
+	}
+}
+
 func TestConfiguredUsesProviderSpecificLegacyCredentials(t *testing.T) {
 	t.Setenv("ENPHASE_USERNAME", "enphase-user")
 	t.Setenv("ENPHASE_PASSWORD", "enphase-password")

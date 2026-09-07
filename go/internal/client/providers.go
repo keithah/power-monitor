@@ -260,7 +260,16 @@ func splitIDs(s string) []string {
 type Emporia struct {
 	Client
 	Email, Password, CognitoURL, ClientID string
+	Now                                   func() time.Time
 }
+
+func (e *Emporia) now() time.Time {
+	if e.Now != nil {
+		return e.Now().UTC()
+	}
+	return time.Now().UTC()
+}
+
 type EmporiaDevice struct {
 	GID         any              `json:"device_gid"`
 	DeviceID    string           `json:"device_id"`
@@ -367,7 +376,9 @@ func (e *Emporia) Devices(ctx context.Context) ([]EmporiaDevice, error) {
 	return devices, nil
 }
 func (e *Emporia) Usages(ctx context.Context, gid any) ([]domain.Reading, error) {
-	u := url.Values{"device_gids": {fmt.Sprint(gid)}, "instant": {time.Now().UTC().Format(time.RFC3339)}, "scale": {"HOUR"}, "energy_unit": {"KILOWATT_HOURS"}}
+	now := e.now()
+	instant := now.Truncate(time.Hour).Add(-time.Second)
+	u := url.Values{"device_gids": {fmt.Sprint(gid)}, "instant": {instant.Format(time.RFC3339)}, "scale": {"HOUR"}, "energy_unit": {"KILOWATT_HOURS"}}
 	path := "/v1/customers/devices/usages?" + u.Encode()
 	var v struct {
 		Instant      string `json:"instant"`
@@ -381,7 +392,7 @@ func (e *Emporia) Usages(ctx context.Context, gid any) ([]domain.Reading, error)
 	if err := e.withAuth(ctx, func() error { return e.do(ctx, http.MethodGet, path, nil, &v) }); err != nil {
 		return nil, err
 	}
-	ts := time.Now().UTC()
+	ts := now
 	if v.Instant != "" {
 		if x, err := time.Parse(time.RFC3339, v.Instant); err == nil {
 			ts = x.UTC()
@@ -391,7 +402,7 @@ func (e *Emporia) Usages(ctx context.Context, gid any) ([]domain.Reading, error)
 	end := start.Add(time.Hour)
 	// Emporia HOUR readings accumulate until the UTC hour closes. Persisting an
 	// open bucket would label a partial value as final and corrupt summaries.
-	if end.After(time.Now().UTC()) {
+	if end.After(now) {
 		return nil, nil
 	}
 	out := []domain.Reading{}
